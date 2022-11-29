@@ -322,7 +322,7 @@ where
         "ilp32d" | "lp64d" => 64,
         _ => 0,
     };
-    let xlen = cx.data_layout().pointer_size.bits();
+    let xlen: u64 = cx.target_spec().pointer_width.into();
 
     let mut avail_gprs = 8;
     let mut avail_fprs = 8;

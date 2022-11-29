@@ -766,7 +766,9 @@ pub trait PrettyPrinter<'tcx>:
                     // array length anon const, rustc will (with debug assertions) print the
                     // constant's path. Which will end up here again.
                     p!("_");
-                } else if let Some(n) = sz.kind().try_to_bits(self.tcx().data_layout.pointer_size) {
+                } else if let Some(n) =
+                    sz.kind().try_to_bits(self.tcx().data_layout.ptr_layout(None).val_size)
+                {
                     p!(write("{}", n));
                 } else if let ty::ConstKind::Param(param) = sz.kind() {
                     p!(print(param));
@@ -1274,7 +1276,10 @@ pub trait PrettyPrinter<'tcx>:
                         if let ty::ConstKind::Value(ty::ValTree::Leaf(int)) = len.kind() {
                             match self.tcx().try_get_global_alloc(alloc_id) {
                                 Some(GlobalAlloc::Memory(alloc)) => {
-                                    let len = int.assert_bits(self.tcx().data_layout.pointer_size);
+                                    // TODO: More complexity needed here.
+                                    let len = int.assert_bits(
+                                        self.tcx().data_layout.ptr_layout(None).val_size,
+                                    );
                                     let range =
                                         AllocRange { start: offset, size: Size::from_bytes(len) };
                                     if let Ok(byte_str) =
@@ -1350,7 +1355,8 @@ pub trait PrettyPrinter<'tcx>:
             }
             // Pointer types
             ty::Ref(..) | ty::RawPtr(_) | ty::FnPtr(_) => {
-                let data = int.assert_bits(self.tcx().data_layout.pointer_size);
+                // TODO: More complexity needed here.
+                let data = int.assert_bits(self.tcx().data_layout.ptr_layout(None).val_size);
                 self = self.typed_value(
                     |mut this| {
                         write!(this, "0x{:x}", data)?;

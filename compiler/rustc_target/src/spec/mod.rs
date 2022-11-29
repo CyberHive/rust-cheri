@@ -1188,6 +1188,7 @@ supported_targets! {
     ("riscv32i-unknown-none-elf", riscv32i_unknown_none_elf),
     ("riscv32im-unknown-none-elf", riscv32im_unknown_none_elf),
     ("riscv32imc-unknown-none-elf", riscv32imc_unknown_none_elf),
+    ("riscv32imcxcheri-unknown-none-purecap", riscv32imcxcheri_unknown_none_purecap),
     ("riscv32imc-esp-espidf", riscv32imc_esp_espidf),
     ("riscv32imac-unknown-none-elf", riscv32imac_unknown_none_elf),
     ("riscv32imac-unknown-xous-elf", riscv32imac_unknown_xous_elf),
@@ -1303,7 +1304,7 @@ impl TargetWarnings {
 pub struct Target {
     /// Target triple to pass to LLVM.
     pub llvm_target: StaticCow<str>,
-    /// Number of bits in a pointer. Influences the `target_pointer_width` `cfg` variable.
+    /// Number of bits in a pointer address. Influences the `target_pointer_width` `cfg` variable.
     pub pointer_width: u32,
     /// Architecture to use for ABI considerations. Valid options include: "x86",
     /// "x86_64", "arm", "aarch64", "mips", "powerpc", "powerpc64", and others.
@@ -1342,6 +1343,9 @@ pub struct TargetOptions {
 
     /// Used as the `target_endian` `cfg` variable. Defaults to little endian.
     pub endian: Endian,
+    /// Width of the pointer type itself. Specify for targets where this is not
+    /// equal to the pointer address width.
+    pub pointer_type_width: Option<u32>,
     /// Width of c_int type. Defaults to "32".
     pub c_int_width: StaticCow<str>,
     /// OS name to use for conditional compilation (`target_os`). Defaults to "none".
@@ -1778,6 +1782,7 @@ impl Default for TargetOptions {
         TargetOptions {
             is_builtin: false,
             endian: Endian::Little,
+            pointer_type_width: None,
             c_int_width: "32".into(),
             os: "none".into(),
             env: "".into(),
@@ -2075,6 +2080,12 @@ impl Target {
                         return Err("Not a valid DWARF version number".into());
                     }
                     base.$key_name = s as u32;
+                }
+            } );
+            ($key_name:ident, Option<u32>) => ( {
+                let name = (stringify!($key_name)).replace("_", "-");
+                if let Some(s) = obj.remove(&name).and_then(|b| b.as_u64()) {
+                    base.$key_name = Some(s as u32);
                 }
             } );
             ($key_name:ident, Option<u64>) => ( {
@@ -2422,6 +2433,7 @@ impl Target {
         }
 
         key!(is_builtin, bool);
+        key!(pointer_type_width, Option<u32>);
         key!(c_int_width = "target-c-int-width");
         key!(os);
         key!(env);
@@ -2672,6 +2684,7 @@ impl ToJson for Target {
 
         target_option_val!(is_builtin);
         target_option_val!(endian, "target-endian");
+        target_option_val!(pointer_type_width, "target-pointer-type-width");
         target_option_val!(c_int_width, "target-c-int-width");
         target_option_val!(os);
         target_option_val!(env);

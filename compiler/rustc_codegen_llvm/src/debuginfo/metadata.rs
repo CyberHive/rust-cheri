@@ -287,6 +287,8 @@ fn build_subroutine_type_di_node<'ll, 'tcx>(
     cx: &CodegenCx<'ll, 'tcx>,
     unique_type_id: UniqueTypeId<'tcx>,
 ) -> DINodeCreationResult<'ll> {
+    let dl = &cx.tcx.data_layout;
+
     // It's possible to create a self-referential
     // type in Rust by using 'impl trait':
     //
@@ -342,8 +344,9 @@ fn build_subroutine_type_di_node<'ll, 'tcx>(
         llvm::LLVMRustDIBuilderCreatePointerType(
             DIB(cx),
             fn_di_node,
-            cx.tcx.data_layout.pointer_size.bits(),
-            cx.tcx.data_layout.pointer_align.abi.bits() as u32,
+            // TODO: Double check this is correct. val_size vs ty_size.
+            dl.ptr_layout(Some(dl.instruction_address_space)).ty_size.bits(),
+            dl.ptr_layout(Some(dl.instruction_address_space)).align.abi.bits() as u32,
             0, // Ignore DWARF address space.
             name.as_ptr().cast(),
             name.len(),
@@ -512,7 +515,8 @@ fn recursion_marker_type_di_node<'ll, 'tcx>(cx: &CodegenCx<'ll, 'tcx>) -> &'ll D
                 DIB(cx),
                 name.as_ptr().cast(),
                 name.len(),
-                cx.tcx.data_layout.pointer_size.bits(),
+                // TODO: More complexity needed here. val_size vs ty_size.
+                cx.tcx.data_layout.ptr_layout(None).val_size.bits(),
                 DW_ATE_unsigned,
             )
         }

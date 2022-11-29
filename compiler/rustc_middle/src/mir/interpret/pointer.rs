@@ -14,8 +14,15 @@ pub trait PointerArithmetic: HasDataLayout {
     // These are not supposed to be overridden.
 
     #[inline(always)]
-    fn pointer_size(&self) -> Size {
-        self.data_layout().pointer_size
+    fn pointer_ty_size(&self) -> Size {
+        // TODO: More complexity needed here.
+        self.data_layout().ptr_layout(None).ty_size
+    }
+
+    #[inline(always)]
+    fn pointer_val_size(&self) -> Size {
+        // TODO: More complexity needed here.
+        self.data_layout().ptr_layout(None).val_size
     }
 
     #[inline(always)]
@@ -25,17 +32,17 @@ pub trait PointerArithmetic: HasDataLayout {
 
     #[inline]
     fn machine_usize_max(&self) -> u64 {
-        self.pointer_size().unsigned_int_max().try_into().unwrap()
+        self.pointer_val_size().unsigned_int_max().try_into().unwrap()
     }
 
     #[inline]
     fn machine_isize_min(&self) -> i64 {
-        self.pointer_size().signed_int_min().try_into().unwrap()
+        self.pointer_val_size().signed_int_min().try_into().unwrap()
     }
 
     #[inline]
     fn machine_isize_max(&self) -> i64 {
-        self.pointer_size().signed_int_max().try_into().unwrap()
+        self.pointer_val_size().signed_int_max().try_into().unwrap()
     }
 
     #[inline]
@@ -45,8 +52,8 @@ pub trait PointerArithmetic: HasDataLayout {
         if val > self.machine_isize_max() {
             // This can only happen if the ptr size is < 64, so we know max_usize_plus_1 fits into
             // i64.
-            debug_assert!(self.pointer_size().bits() < 64);
-            let max_usize_plus_1 = 1u128 << self.pointer_size().bits();
+            debug_assert!(self.pointer_ty_size().bits() < 64);
+            let max_usize_plus_1 = 1u128 << self.pointer_val_size().bits();
             val - i64::try_from(max_usize_plus_1).unwrap()
         } else {
             val
@@ -59,7 +66,7 @@ pub trait PointerArithmetic: HasDataLayout {
     #[inline]
     fn truncate_to_ptr(&self, (val, over): (u64, bool)) -> (u64, bool) {
         let val = u128::from(val);
-        let max_ptr_plus_1 = 1u128 << self.pointer_size().bits();
+        let max_ptr_plus_1 = 1u128 << self.pointer_val_size().bits();
         (u64::try_from(val % max_ptr_plus_1).unwrap(), over || val >= max_ptr_plus_1)
     }
 

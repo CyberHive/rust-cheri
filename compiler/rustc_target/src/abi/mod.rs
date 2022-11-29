@@ -29,17 +29,26 @@ pub struct TargetDataLayout {
     pub i128_align: AbiAndPrefAlign,
     pub f32_align: AbiAndPrefAlign,
     pub f64_align: AbiAndPrefAlign,
-    pub pointer_size: Size,
-    pub pointer_align: AbiAndPrefAlign,
+
+    pub pointer_layouts: Vec<(AddressSpace, PointerLayout)>,
     pub aggregate_align: AbiAndPrefAlign,
 
     /// Alignments for vector types.
     pub vector_align: Vec<(Size, AbiAndPrefAlign)>,
 
+    pub globals_address_space: AddressSpace,
+    pub alloca_address_space: AddressSpace,
     pub instruction_address_space: AddressSpace,
+
+    // TODO: Remove this and related logic, we should ideally have an address space for each
+    // distinct type of pointer.
+    pub default_address_space: AddressSpace,
 
     /// Minimum size of #[repr(C)] enums (default I32 bits)
     pub c_enum_min_size: Integer,
+
+    /// Whether this is a CHERI target for which all pointers are capabilities.
+    pub is_cheri_purecap: bool,
 }
 
 impl Default for TargetDataLayout {
@@ -56,15 +65,18 @@ impl Default for TargetDataLayout {
             i128_align: AbiAndPrefAlign { abi: align(32), pref: align(64) },
             f32_align: AbiAndPrefAlign::new(align(32)),
             f64_align: AbiAndPrefAlign::new(align(64)),
-            pointer_size: Size::from_bits(64),
-            pointer_align: AbiAndPrefAlign::new(align(64)),
+            pointer_layouts: vec![(AddressSpace::DATA, PointerLayout::default())],
             aggregate_align: AbiAndPrefAlign { abi: align(0), pref: align(64) },
             vector_align: vec![
                 (Size::from_bits(64), AbiAndPrefAlign::new(align(64))),
                 (Size::from_bits(128), AbiAndPrefAlign::new(align(128))),
             ],
             instruction_address_space: AddressSpace::DATA,
+            globals_address_space: AddressSpace::DATA,
+            alloca_address_space: AddressSpace::DATA,
+            default_address_space: AddressSpace::DATA,
             c_enum_min_size: Integer::I32,
+            is_cheri_purecap: false,
         }
     }
 }
@@ -115,6 +127,19 @@ impl TargetDataLayout {
             Ok(AbiAndPrefAlign { abi: align_from_bits(abi)?, pref: align_from_bits(pref)? })
         };
 
+        let align_noslice = |aa: &'a str,
+                             pa: &'a str,
+                             cause: &'a str|
+         -> Result<AbiAndPrefAlign, TargetDataLayoutErrors<'_>> {
+            let align_from_bits = |bits| {
+                Align::from_bits(bits)
+                    .map_err(|err| TargetDataLayoutErrors::InvalidAlignment { cause, err })
+            };
+            let abi = parse_bits(aa, "alignment", cause)?;
+            let pref = parse_bits(pa, "alignment", cause)?;
+            Ok(AbiAndPrefAlign { abi: align_from_bits(abi)?, pref: align_from_bits(pref)? })
+        };
+
         let mut dl = TargetDataLayout::default();
         let mut i128_align_src = 64;
         for spec in target.data_layout.split('-') {
@@ -126,12 +151,58 @@ impl TargetDataLayout {
                 [p] if p.starts_with('P') => {
                     dl.instruction_address_space = parse_address_space(&p[1..], "P")?
                 }
+                [g] if g.starts_with('G') => {
+                    dl.globals_address_space = parse_address_space(&g[1..], "G")?;
+                    // TODO: Remove this.
+                    dl.default_address_space = dl.globals_address_space;
+                }
+                [a] if a.starts_with('A') => {
+                    dl.alloca_address_space = parse_address_space(&a[1..], "A")?
+                }
                 ["a", ref a @ ..] => dl.aggregate_align = align(a, "a")?,
                 ["f32", ref a @ ..] => dl.f32_align = align(a, "f32")?,
                 ["f64", ref a @ ..] => dl.f64_align = align(a, "f64")?,
-                [p @ "p", s, ref a @ ..] | [p @ "p0", s, ref a @ ..] => {
-                    dl.pointer_size = size(s, p)?;
-                    dl.pointer_align = align(a, p)?;
+                [p, s, aa, pa, i, ..]
+                    if p.starts_with('p')
+                        && i.parse::<u64>().is_ok()
+                        && pa.parse::<u64>().is_ok() =>
+                {
+                    let mut pl = PointerLayout::default();
+                    pl.ty_size = size(s, p)?;
+                    pl.val_size = size(i, p)?;
+                    pl.is_fat_ty = p.len() > 1 && p.chars().nth(1).unwrap() == 'f';
+                    pl.align = align_noslice(aa, pa, p)?;
+                    let as_field = &p[(if pl.is_fat_ty { 2 } else { 1 })..];
+                    let address_space = if as_field.len() > 0 {
+                        parse_address_space(as_field, p)?
+                    } else {
+                        AddressSpace(0)
+                    };
+                    if let Some(e) = dl.pointer_layouts.iter_mut().find(|e| e.0 == address_space) {
+                        e.1 = pl;
+                        continue;
+                    }
+                    // No existing entry, add a new one.
+                    dl.pointer_layouts.push((address_space, pl));
+                }
+                [p, s, ref a @ ..] if p.starts_with('p') => {
+                    let mut pl = PointerLayout::default();
+                    pl.ty_size = size(s, p)?;
+                    pl.val_size = pl.ty_size;
+                    pl.is_fat_ty = p.len() > 1 && p.chars().nth(1).unwrap() == 'f';
+                    pl.align = align(a, p)?;
+                    let as_field = &p[(if pl.is_fat_ty { 2 } else { 1 })..];
+                    let address_space = if as_field.len() > 0 {
+                        parse_address_space(as_field, p)?
+                    } else {
+                        AddressSpace(0)
+                    };
+                    if let Some(e) = dl.pointer_layouts.iter_mut().find(|e| e.0 == address_space) {
+                        e.1 = pl;
+                        continue;
+                    }
+                    // No existing entry, add a new one.
+                    dl.pointer_layouts.push((address_space, pl));
                 }
                 [s, ref a @ ..] if s.starts_with('i') => {
                     let Ok(bits) = s[1..].parse::<u64>() else {
@@ -177,9 +248,10 @@ impl TargetDataLayout {
         }
 
         let target_pointer_width: u64 = target.pointer_width.into();
-        if dl.pointer_size.bits() != target_pointer_width {
+        let dl_pointer_size = dl.ptr_layout(None).val_size.bits();
+        if dl_pointer_size != target_pointer_width {
             return Err(TargetDataLayoutErrors::InconsistentTargetPointerWidth {
-                pointer_size: dl.pointer_size.bits(),
+                pointer_size: dl_pointer_size,
                 target: target.pointer_width,
             });
         }
@@ -189,7 +261,19 @@ impl TargetDataLayout {
             Err(err) => return Err(TargetDataLayoutErrors::InvalidBitsSize { err }),
         };
 
+        dl.is_cheri_purecap = target.llvm_target.ends_with("purecap");
+
         Ok(dl)
+    }
+
+    #[inline]
+    pub fn ptr_layout(&self, address_space: Option<AddressSpace>) -> PointerLayout {
+        let addr_space = address_space.unwrap_or(self.default_address_space);
+        if let Some(e) = self.pointer_layouts.iter().find(|e| e.0 == addr_space) {
+            e.1
+        } else {
+            panic!("ptr_layout: unknown address space {}", addr_space.0);
+        }
     }
 
     /// Returns exclusive upper bound on object size.
@@ -204,22 +288,22 @@ impl TargetDataLayout {
     /// currently conservatively bounded to 1 << 47 as that is enough to cover the current usable
     /// address space on 64-bit ARMv8 and x86_64.
     #[inline]
-    pub fn obj_size_bound(&self) -> u64 {
-        match self.pointer_size.bits() {
+    pub fn obj_size_bound(&self, address_space: Option<AddressSpace>) -> u64 {
+        match self.ptr_layout(address_space).val_size.bits() {
             16 => 1 << 15,
             32 => 1 << 31,
             64 => 1 << 47,
-            bits => panic!("obj_size_bound: unknown pointer bit size {}", bits),
+            bits => panic!("idx_obj_size_bound: unknown pointer idx bit size {}", bits),
         }
     }
 
     #[inline]
-    pub fn ptr_sized_integer(&self) -> Integer {
-        match self.pointer_size.bits() {
+    pub fn ptr_sized_integer(&self, address_space: Option<AddressSpace>) -> Integer {
+        match self.ptr_layout(address_space).val_size.bits() {
             16 => I16,
             32 => I32,
             64 => I64,
-            bits => panic!("ptr_sized_integer: unknown pointer bit size {}", bits),
+            bits => panic!("val_sized_integer: unknown pointer idx size {}", bits),
         }
     }
 
@@ -361,7 +445,8 @@ impl Size {
 
         let bytes = self.bytes().checked_add(offset.bytes())?;
 
-        if bytes < dl.obj_size_bound() { Some(Size::from_bytes(bytes)) } else { None }
+        // TODO: Address space shouldn't be None.
+        if bytes < dl.obj_size_bound(None) { Some(Size::from_bytes(bytes)) } else { None }
     }
 
     #[inline]
@@ -369,7 +454,8 @@ impl Size {
         let dl = cx.data_layout();
 
         let bytes = self.bytes().checked_mul(count)?;
-        if bytes < dl.obj_size_bound() { Some(Size::from_bytes(bytes)) } else { None }
+        // TODO: Address space shouldn't be None.
+        if bytes < dl.obj_size_bound(None) { Some(Size::from_bytes(bytes)) } else { None }
     }
 
     /// Truncates `value` to `self` bits and then sign-extends it to 128 bits
@@ -611,6 +697,32 @@ impl AbiAndPrefAlign {
     }
 }
 
+/// Layout and type data for a pointer in a certain address space.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(HashStable_Generic)]
+pub struct PointerLayout {
+    /// Size taken up by the representation of the type itself.
+    pub ty_size: Size,
+    /// Size of the value representable by the type, excluding extra metadata.
+    pub val_size: Size,
+    /// Is this type a 'fat' pointer - IE one with extra metadata alongside the address.
+    pub is_fat_ty: bool,
+    /// The alignment information for the pointer.
+    pub align: AbiAndPrefAlign,
+}
+
+impl Default for PointerLayout {
+    /// Creates an instance of `PointerLayout`.
+    fn default() -> PointerLayout {
+        PointerLayout {
+            ty_size: Size::from_bits(64),
+            val_size: Size::from_bits(64),
+            is_fat_ty: false,
+            align: AbiAndPrefAlign::new(Align::from_bits(64).unwrap()),
+        }
+    }
+}
+
 /// Integers, also used for enum discriminants.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, HashStable_Generic)]
 pub enum Integer {
@@ -733,7 +845,8 @@ impl Primitive {
             Int(i, _) => i.size(),
             F32 => Size::from_bits(32),
             F64 => Size::from_bits(64),
-            Pointer => dl.pointer_size,
+            // TODO: More complexity is needed here.
+            Pointer => dl.ptr_layout(None).ty_size,
         }
     }
 
@@ -744,7 +857,8 @@ impl Primitive {
             Int(i, _) => i.align(dl),
             F32 => dl.f32_align,
             F64 => dl.f64_align,
-            Pointer => dl.pointer_align,
+            // TODO: More complexity is needed here.
+            Pointer => dl.ptr_layout(None).align,
         }
     }
 

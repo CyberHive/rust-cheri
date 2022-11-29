@@ -130,7 +130,8 @@ fn tag_base_type<'ll, 'tcx>(
                     // pointer so we fix this up to just be `usize`.
                     // DWARF might be able to deal with this but with an integer type we are on
                     // the safe side there too.
-                    cx.data_layout().ptr_sized_integer()
+                    // TODO: More complexity needed here.
+                    cx.data_layout().ptr_sized_integer(None)
                 }
             }
             .to_ty(cx.tcx, false)

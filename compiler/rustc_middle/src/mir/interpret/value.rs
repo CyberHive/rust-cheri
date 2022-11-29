@@ -178,7 +178,7 @@ impl<Prov> From<ScalarInt> for Scalar<Prov> {
 impl<Prov> Scalar<Prov> {
     #[inline(always)]
     pub fn from_pointer(ptr: Pointer<Prov>, cx: &impl HasDataLayout) -> Self {
-        Scalar::Ptr(ptr, u8::try_from(cx.pointer_size().bytes()).unwrap())
+        Scalar::Ptr(ptr, u8::try_from(cx.pointer_ty_size().bytes()).unwrap())
     }
 
     /// Create a Scalar from a pointer with an `Option<_>` provenance (where `None` represents a
@@ -187,14 +187,14 @@ impl<Prov> Scalar<Prov> {
         match ptr.into_parts() {
             (Some(prov), offset) => Scalar::from_pointer(Pointer::new(prov, offset), cx),
             (None, offset) => {
-                Scalar::Int(ScalarInt::try_from_uint(offset.bytes(), cx.pointer_size()).unwrap())
+                Scalar::Int(ScalarInt::try_from_uint(offset.bytes(), cx.pointer_ty_size()).unwrap())
             }
         }
     }
 
     #[inline]
     pub fn null_ptr(cx: &impl HasDataLayout) -> Self {
-        Scalar::Int(ScalarInt::null(cx.pointer_size()))
+        Scalar::Int(ScalarInt::null(cx.pointer_ty_size()))
     }
 
     #[inline]
@@ -241,7 +241,7 @@ impl<Prov> Scalar<Prov> {
 
     #[inline]
     pub fn from_machine_usize(i: u64, cx: &impl HasDataLayout) -> Self {
-        Self::from_uint(i, cx.data_layout().pointer_size)
+        Self::from_uint(i, cx.pointer_val_size())
     }
 
     #[inline]
@@ -268,7 +268,7 @@ impl<Prov> Scalar<Prov> {
 
     #[inline]
     pub fn from_machine_isize(i: i64, cx: &impl HasDataLayout) -> Self {
-        Self::from_int(i, cx.data_layout().pointer_size)
+        Self::from_int(i, cx.pointer_ty_size())
     }
 
     #[inline]
@@ -315,7 +315,7 @@ impl<Prov> Scalar<Prov> {
 impl<'tcx, Prov: Provenance> Scalar<Prov> {
     pub fn to_pointer(self, cx: &impl HasDataLayout) -> InterpResult<'tcx, Pointer<Option<Prov>>> {
         match self
-            .to_bits_or_ptr_internal(cx.pointer_size())
+            .to_bits_or_ptr_internal(cx.pointer_ty_size())
             .map_err(|s| err_ub!(ScalarSizeMismatch(s)))?
         {
             Err(ptr) => Ok(ptr.into()),
@@ -429,7 +429,7 @@ impl<'tcx, Prov: Provenance> Scalar<Prov> {
     /// Converts the scalar to produce a machine-pointer-sized unsigned integer.
     /// Fails if the scalar is a pointer.
     pub fn to_machine_usize(self, cx: &impl HasDataLayout) -> InterpResult<'tcx, u64> {
-        let b = self.to_uint(cx.data_layout().pointer_size)?;
+        let b = self.to_uint(cx.pointer_val_size())?;
         Ok(u64::try_from(b).unwrap())
     }
 
@@ -469,7 +469,7 @@ impl<'tcx, Prov: Provenance> Scalar<Prov> {
     /// Converts the scalar to produce a machine-pointer-sized signed integer.
     /// Fails if the scalar is a pointer.
     pub fn to_machine_isize(self, cx: &impl HasDataLayout) -> InterpResult<'tcx, i64> {
-        let b = self.to_int(cx.data_layout().pointer_size)?;
+        let b = self.to_int(cx.pointer_ty_size())?;
         Ok(i64::try_from(b).unwrap())
     }
 

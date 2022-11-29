@@ -416,7 +416,8 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
             None
         };
 
-        let isize_ty = Type::ix_llcx(llcx, tcx.data_layout.pointer_size.bits());
+        // TODO: More complexity needed here.
+        let isize_ty = Type::ix_llcx(llcx, tcx.data_layout.ptr_layout(None).val_size.bits());
 
         CodegenCx {
             tcx,

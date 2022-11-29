@@ -865,7 +865,8 @@ fn write_allocation_bytes<'tcx, Prov: Provenance, Extra>(
     let mut i = Size::ZERO;
     let mut line_start = Size::ZERO;
 
-    let ptr_size = tcx.data_layout.pointer_size;
+    // TODO: More complexity needed here. val_size vs ty_size.
+    let ptr_size = tcx.data_layout.ptr_layout(None).val_size;
 
     let mut ascii = String::new();
 

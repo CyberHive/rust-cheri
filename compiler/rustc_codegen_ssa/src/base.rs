@@ -170,7 +170,8 @@ pub fn unsized_info<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 
             if let Some(entry_idx) = vptr_entry_idx {
                 let ptr_ty = cx.type_i8p();
-                let ptr_align = cx.tcx().data_layout.pointer_align.abi;
+                let dl = &cx.tcx().data_layout;
+                let ptr_align = dl.ptr_layout(Some(dl.instruction_address_space)).align.abi;
                 let vtable_ptr_ty = vtable_ptr_ty(cx, target, target_dyn_kind);
                 let llvtable = bx.pointercast(old_info, bx.type_ptr_to(ptr_ty));
                 let gep = bx.inbounds_gep(

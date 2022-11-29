@@ -408,7 +408,10 @@ fn layout_of_uncached<'tcx>(
                 ty::Foreign(..) => {
                     return Ok(tcx.intern_layout(LayoutS::scalar(cx, data_ptr)));
                 }
-                ty::Slice(_) | ty::Str => scalar_unit(Int(dl.ptr_sized_integer(), false)),
+                ty::Slice(_) | ty::Str => {
+                    // TODO: More complexity needed here.
+                    scalar_unit(Int(dl.ptr_sized_integer(None), false))
+                }
                 ty::Dynamic(..) => {
                     let mut vtable = scalar_unit(Pointer);
                     vtable.valid_range_mut().start = 1;
@@ -422,7 +425,8 @@ fn layout_of_uncached<'tcx>(
         }
 
         ty::Dynamic(_, _, ty::DynStar) => {
-            let mut data = scalar_unit(Int(dl.ptr_sized_integer(), false));
+            // TODO: More complexity needed here.
+            let mut data = scalar_unit(Int(dl.ptr_sized_integer(None), false));
             data.valid_range_mut().start = 0;
             let mut vtable = scalar_unit(Pointer);
             vtable.valid_range_mut().start = 1;
@@ -1106,7 +1110,8 @@ fn layout_of_uncached<'tcx>(
             // Align the maximum variant size to the largest alignment.
             size = size.align_to(align.abi);
 
-            if size.bytes() >= dl.obj_size_bound() {
+            // TODO: More complexity needed here.
+            if size.bytes() >= dl.obj_size_bound(None) {
                 return Err(LayoutError::SizeOverflow(ty));
             }
 

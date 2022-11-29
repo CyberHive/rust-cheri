@@ -60,29 +60,36 @@ impl IntegerExt for Integer {
             attr::SignedInt(ast::IntTy::I64) | attr::UnsignedInt(ast::UintTy::U64) => I64,
             attr::SignedInt(ast::IntTy::I128) | attr::UnsignedInt(ast::UintTy::U128) => I128,
             attr::SignedInt(ast::IntTy::Isize) | attr::UnsignedInt(ast::UintTy::Usize) => {
-                dl.ptr_sized_integer()
+                // TODO: More complexity needed here?
+                dl.ptr_sized_integer(None)
             }
         }
     }
 
     fn from_int_ty<C: HasDataLayout>(cx: &C, ity: ty::IntTy) -> Integer {
+        let dl = cx.data_layout();
+
         match ity {
             ty::IntTy::I8 => I8,
             ty::IntTy::I16 => I16,
             ty::IntTy::I32 => I32,
             ty::IntTy::I64 => I64,
             ty::IntTy::I128 => I128,
-            ty::IntTy::Isize => cx.data_layout().ptr_sized_integer(),
+            // TODO: More complexity needed here?
+            ty::IntTy::Isize => dl.ptr_sized_integer(None),
         }
     }
     fn from_uint_ty<C: HasDataLayout>(cx: &C, ity: ty::UintTy) -> Integer {
+        let dl = cx.data_layout();
+
         match ity {
             ty::UintTy::U8 => I8,
             ty::UintTy::U16 => I16,
             ty::UintTy::U32 => I32,
             ty::UintTy::U64 => I64,
             ty::UintTy::U128 => I128,
-            ty::UintTy::Usize => cx.data_layout().ptr_sized_integer(),
+            // TODO: More complexity needed here?
+            ty::UintTy::Usize => dl.ptr_sized_integer(None),
         }
     }
 

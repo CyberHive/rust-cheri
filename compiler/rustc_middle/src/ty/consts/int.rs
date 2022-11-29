@@ -234,7 +234,8 @@ impl ScalarInt {
 
     #[inline]
     pub fn try_to_machine_usize<'tcx>(&self, tcx: TyCtxt<'tcx>) -> Result<u64, Size> {
-        Ok(self.to_bits(tcx.data_layout.pointer_size)? as u64)
+        // TODO: More complexity needed here.
+        Ok(self.to_bits(tcx.data_layout.ptr_layout(None).val_size)? as u64)
     }
 
     /// Tries to convert the `ScalarInt` to an unsigned integer of the given size.

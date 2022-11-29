@@ -32,6 +32,8 @@ fn emit_direct_ptr_va_arg<'ll, 'tcx>(
     slot_size: Align,
     allow_higher_align: bool,
 ) -> (&'ll Value, Align) {
+    let dl = &bx.tcx().data_layout;
+
     let va_list_ty = bx.type_i8p();
     let va_list_ptr_ty = bx.type_ptr_to(va_list_ty);
     let va_list_addr = if list.layout.llvm_type(bx.cx) != va_list_ptr_ty {
@@ -40,7 +42,8 @@ fn emit_direct_ptr_va_arg<'ll, 'tcx>(
         list.immediate()
     };
 
-    let ptr = bx.load(va_list_ty, va_list_addr, bx.tcx().data_layout.pointer_align.abi);
+    let ptr_align = dl.ptr_layout(Some(dl.alloca_address_space)).align.abi;
+    let ptr = bx.load(va_list_ty, va_list_addr, ptr_align);
 
     let (addr, addr_align) = if allow_higher_align && align > slot_size {
         (round_pointer_up_to_alignment(bx, ptr, align, bx.cx().type_i8p()), align)
@@ -51,7 +54,7 @@ fn emit_direct_ptr_va_arg<'ll, 'tcx>(
     let aligned_size = size.align_to(slot_size).bytes() as i32;
     let full_direct_size = bx.cx().const_i32(aligned_size);
     let next = bx.inbounds_gep(bx.type_i8(), addr, &[full_direct_size]);
-    bx.store(next, va_list_addr, bx.tcx().data_layout.pointer_align.abi);
+    bx.store(next, va_list_addr, ptr_align);
 
     if size.bytes() < slot_size.bytes() && bx.tcx().sess.target.endian == Endian::Big {
         let adjusted_size = bx.cx().const_i32((slot_size.bytes() - size.bytes()) as i32);
@@ -70,12 +73,14 @@ fn emit_ptr_va_arg<'ll, 'tcx>(
     slot_size: Align,
     allow_higher_align: bool,
 ) -> &'ll Value {
+    let dl = bx.cx.data_layout();
     let layout = bx.cx.layout_of(target_ty);
     let (llty, size, align) = if indirect {
         (
             bx.cx.layout_of(bx.cx.tcx.mk_imm_ptr(target_ty)).llvm_type(bx.cx),
-            bx.cx.data_layout().pointer_size,
-            bx.cx.data_layout().pointer_align,
+            // TODO: Double check this is correct.
+            dl.ptr_layout(Some(dl.alloca_address_space)).ty_size,
+            dl.ptr_layout(Some(dl.alloca_address_space)).align,
         )
     } else {
         (layout.llvm_type(bx.cx), layout.size, layout.align)
@@ -95,6 +100,8 @@ fn emit_aapcs_va_arg<'ll, 'tcx>(
     list: OperandRef<'tcx, &'ll Value>,
     target_ty: Ty<'tcx>,
 ) -> &'ll Value {
+    let dl = &bx.tcx().data_layout;
+
     // Implementation of the AAPCS64 calling convention for va_args see
     // https://github.com/ARM-software/abi-aa/blob/master/aapcs64/aapcs64.rst
     let va_list_addr = list.immediate();
@@ -148,7 +155,7 @@ fn emit_aapcs_va_arg<'ll, 'tcx>(
     bx.switch_to_block(in_reg);
     let top_type = bx.type_i8p();
     let top = bx.struct_gep(va_list_ty, va_list_addr, reg_top_index);
-    let top = bx.load(top_type, top, bx.tcx().data_layout.pointer_align.abi);
+    let top = bx.load(top_type, top, dl.ptr_layout(Some(dl.alloca_address_space)).align.abi);
 
     // reg_value = *(@top + reg_off_v);
     let mut reg_addr = bx.gep(bx.type_i8(), top, &[reg_off_v]);

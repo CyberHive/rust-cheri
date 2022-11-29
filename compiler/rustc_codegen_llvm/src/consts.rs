@@ -28,7 +28,8 @@ pub fn const_alloc_to_llvm<'ll>(cx: &CodegenCx<'ll, '_>, alloc: ConstAllocation<
     let alloc = alloc.inner();
     let mut llvals = Vec::with_capacity(alloc.provenance().len() + 1);
     let dl = cx.data_layout();
-    let pointer_size = dl.pointer_size.bytes() as usize;
+    // TODO: More complexity needed here. val_size vs ty_size.
+    let pointer_size = dl.ptr_layout(None).val_size.bytes() as usize;
 
     // Note: this function may call `inspect_with_uninit_and_ptr_outside_interpreter`, so `range`
     // must be within the bounds of `alloc` and not contain or overlap a pointer provenance.
@@ -112,7 +113,8 @@ pub fn const_alloc_to_llvm<'ll>(cx: &CodegenCx<'ll, '_>, alloc: ConstAllocation<
             ),
             Scalar::Initialized {
                 value: Primitive::Pointer,
-                valid_range: WrappingRange::full(dl.pointer_size),
+                // TODO: More complexity needed here.
+                valid_range: WrappingRange::full(dl.ptr_layout(None).val_size),
             },
             cx.type_i8p_ext(address_space),
         ));

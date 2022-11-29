@@ -944,7 +944,8 @@ fn default_configuration(sess: &Session) -> CrateConfig {
             let s = i.to_string();
             insert_atomic(&s, align);
             if s == wordsz {
-                insert_atomic("ptr", layout.pointer_align.abi);
+                // TODO: More complexity needed here.
+                insert_atomic("ptr", layout.ptr_layout(None).align.abi);
             }
         }
     }

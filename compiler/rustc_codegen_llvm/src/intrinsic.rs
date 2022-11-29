@@ -309,7 +309,13 @@ impl<'ll, 'tcx> IntrinsicCallMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                         // For rusty ABIs, small aggregates are actually passed
                         // as `RegKind::Integer` (see `FnAbi::adjust_for_abi`),
                         // so we re-use that same threshold here.
-                        layout.size() <= self.data_layout().pointer_size * 2
+                        // TODO: Stop using pointer size as an equivalent for machine word size.
+                        layout.size()
+                            <= self
+                                .data_layout()
+                                .ptr_layout(Some(self.data_layout().alloca_address_space))
+                                .val_size
+                                * 2
                     }
                 };
 
@@ -465,6 +471,8 @@ fn codegen_msvc_try<'ll>(
     dest: &'ll Value,
 ) {
     let (llty, llfn) = get_rust_try_fn(bx, &mut |mut bx| {
+        let dl = &bx.tcx().data_layout;
+
         bx.set_personality_fn(bx.eh_personality());
 
         let normal = bx.append_sibling_block("normal");
@@ -532,7 +540,7 @@ fn codegen_msvc_try<'ll>(
         //      }
         //
         // More information can be found in libstd's seh.rs implementation.
-        let ptr_align = bx.tcx().data_layout.pointer_align.abi;
+        let ptr_align = dl.ptr_layout(Some(dl.alloca_address_space)).align.abi;
         let slot = bx.alloca(bx.type_i8p(), ptr_align);
         let try_func_ty = bx.type_func(&[bx.type_i8p()], bx.type_void());
         bx.invoke(try_func_ty, None, try_func, &[data], normal, catchswitch, None);
@@ -696,6 +704,8 @@ fn codegen_emcc_try<'ll>(
         //      %catch_data[1] = %is_rust_panic
         //      call %catch_func(%data, %catch_data)
         //      ret 1
+        let dl = &bx.tcx().data_layout;
+
         let then = bx.append_sibling_block("then");
         let catch = bx.append_sibling_block("catch");
 
@@ -729,8 +739,8 @@ fn codegen_emcc_try<'ll>(
 
         // We need to pass two values to catch_func (ptr and is_rust_panic), so
         // create an alloca and pass a pointer to that.
-        let ptr_align = bx.tcx().data_layout.pointer_align.abi;
-        let i8_align = bx.tcx().data_layout.i8_align.abi;
+        let ptr_align = dl.ptr_layout(Some(dl.alloca_address_space)).align.abi;
+        let i8_align = dl.i8_align.abi;
         let catch_data_type = bx.type_struct(&[bx.type_i8p(), bx.type_bool()], false);
         let catch_data = bx.alloca(catch_data_type, ptr_align);
         let catch_data_0 =
@@ -1094,11 +1104,13 @@ fn generic_simd_intrinsic<'ll, 'tcx>(
         let (i_xn, in_elem_bitwidth) = match in_elem.kind() {
             ty::Int(i) => (
                 args[0].immediate(),
-                i.bit_width().unwrap_or_else(|| bx.data_layout().pointer_size.bits()),
+                // TODO: Stop using pointer size as an equivalent to machine word size?
+                i.bit_width().unwrap_or_else(|| bx.data_layout().ptr_layout(None).val_size.bits()),
             ),
             ty::Uint(i) => (
                 args[0].immediate(),
-                i.bit_width().unwrap_or_else(|| bx.data_layout().pointer_size.bits()),
+                // TODO: Stop using pointer size as an equivalent to machine word size?
+                i.bit_width().unwrap_or_else(|| bx.data_layout().ptr_layout(None).val_size.bits()),
             ),
             _ => return_error!(
                 "vector argument `{}`'s element type `{}`, expected integer element type",
@@ -1984,7 +1996,8 @@ unsupported {} from `{}` with element `{}` of size `{}` to `{}`"#,
         let lhs = args[0].immediate();
         let rhs = args[1].immediate();
         let is_add = name == sym::simd_saturating_add;
-        let ptr_bits = bx.tcx().data_layout.pointer_size.bits() as _;
+        // TODO: Stop using pointer size as an equivalent to machine word size?
+        let ptr_bits = bx.tcx().data_layout.ptr_layout(None).val_size.bits() as _;
         let (signed, elem_width, elem_ty) = match *in_elem.kind() {
             ty::Int(i) => (true, i.bit_width().unwrap_or(ptr_bits), bx.cx.type_int_from_ty(i)),
             ty::Uint(i) => (false, i.bit_width().unwrap_or(ptr_bits), bx.cx.type_uint_from_ty(i)),

@@ -819,7 +819,8 @@ impl<'tcx> Visitor<'tcx> for CostChecker<'_, 'tcx> {
     /// use that, otherwise we use a moderately-large dummy cost.
     fn visit_local_decl(&mut self, local: Local, local_decl: &LocalDecl<'tcx>) {
         let tcx = self.tcx;
-        let ptr_size = tcx.data_layout.pointer_size.bytes();
+        // FIXME: Assumption that machine word size == ptr size needs to be removed.
+        let ptr_size = tcx.data_layout.ptr_layout(None).val_size.bytes();
 
         let ty = self.instance.subst_mir(tcx, &local_decl.ty);
         // Cost of the var is the size in machine-words, if we know

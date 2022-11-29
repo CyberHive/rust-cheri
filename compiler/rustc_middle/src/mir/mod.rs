@@ -2791,7 +2791,8 @@ fn pretty_print_const_value<'tcx>(
                 }
             }
             (ConstValue::ByRef { alloc, offset }, ty::Array(t, n)) if *t == u8_type => {
-                let n = n.kind().try_to_bits(tcx.data_layout.pointer_size).unwrap();
+                // TODO: More complexity needed here?
+                let n = n.kind().try_to_bits(tcx.data_layout.ptr_layout(None).val_size).unwrap();
                 // cast is ok because we already checked for pointer size (32 or 64 bit) above
                 let range = AllocRange { start: offset, size: Size::from_bytes(n) };
                 let byte_str = alloc.inner().get_bytes_strip_provenance(&tcx, range).unwrap();

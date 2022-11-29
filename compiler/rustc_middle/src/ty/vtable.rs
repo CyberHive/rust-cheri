@@ -70,8 +70,11 @@ pub(super) fn vtable_allocation_provider<'tcx>(
     let size = layout.size.bytes();
     let align = layout.align.abi.bytes();
 
-    let ptr_size = tcx.data_layout.pointer_size;
-    let ptr_align = tcx.data_layout.pointer_align.abi;
+    // We are storing multiple pointers, so we need to be concerned with the type size of pointers
+    // rather than the value size.
+    // TODO: More complexity needed here.
+    let ptr_size = tcx.data_layout.ptr_layout(None).ty_size;
+    let ptr_align = tcx.data_layout.ptr_layout(None).align.abi;
 
     let vtable_size = ptr_size * u64::try_from(vtable_entries.len()).unwrap();
     let mut vtable = Allocation::uninit(vtable_size, ptr_align, /* panic_on_fail */ true).unwrap();

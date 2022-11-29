@@ -272,7 +272,8 @@ pub(crate) mod rustc {
                 ty::Int(I64) | ty::Uint(U64) | ty::Float(F64) => Ok(Self::number(8)),
                 ty::Int(I128) | ty::Uint(U128) => Ok(Self::number(16)),
                 ty::Int(Isize) | ty::Uint(Usize) => {
-                    Ok(Self::number(target.pointer_size.bytes_usize()))
+                    // TODO: More complexity needed here.
+                    Ok(Self::number(target.ptr_layout(None).val_size.bytes_usize()))
                 }
 
                 ty::Tuple(members) => {

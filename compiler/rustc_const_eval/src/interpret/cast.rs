@@ -187,8 +187,8 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
             return Ok(**src);
         } else {
             // Casting the metadata away from a fat ptr.
-            assert_eq!(src.layout.size, 2 * self.pointer_size());
-            assert_eq!(dest_layout.size, self.pointer_size());
+            assert_eq!(src.layout.size, 2 * self.pointer_ty_size());
+            assert_eq!(dest_layout.size, self.pointer_ty_size());
             assert!(src.layout.ty.is_unsafe_ptr());
             return match **src {
                 Immediate::ScalarPair(data, _) => Ok(data.into()),

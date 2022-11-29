@@ -272,7 +272,8 @@ impl Allocation {
         // Compute new pointer provenance, which also adjusts the bytes.
         let mut bytes = self.bytes;
         let mut new_provenance = Vec::with_capacity(self.provenance.0.len());
-        let ptr_size = cx.data_layout().pointer_size.bytes_usize();
+        // TODO: More complexity needed here. Unsure if this should be val_size or ty_size.
+        let ptr_size = cx.data_layout().ptr_layout(None).val_size.bytes_usize();
         let endian = cx.data_layout().endian;
         for &(offset, alloc_id) in self.provenance.iter() {
             let idx = offset.bytes_usize();
@@ -419,7 +420,8 @@ impl<Prov: Provenance, Extra> Allocation<Prov, Extra> {
         let bits = read_target_uint(cx.data_layout().endian, bytes).unwrap();
 
         if read_provenance {
-            assert_eq!(range.size, cx.data_layout().pointer_size);
+            // TODO: More complexity needed here. val_size vs ty_size.
+            assert_eq!(range.size, cx.data_layout().ptr_layout(None).val_size);
 
             // When reading data with provenance, the easy case is finding provenance exactly where we
             // are reading, then we can put data and provenance back together and return that.
@@ -511,7 +513,11 @@ impl<Prov: Copy, Extra> Allocation<Prov, Extra> {
     fn range_get_provenance(&self, cx: &impl HasDataLayout, range: AllocRange) -> &[(Size, Prov)] {
         // We have to go back `pointer_size - 1` bytes, as that one would still overlap with
         // the beginning of this range.
-        let start = range.start.bytes().saturating_sub(cx.data_layout().pointer_size.bytes() - 1);
+        // TODO: More complexity needed here. val_size vs ty_size.
+        let start = range
+            .start
+            .bytes()
+            .saturating_sub(cx.data_layout().ptr_layout(None).val_size.bytes() - 1);
         self.provenance.range(Size::from_bytes(start)..range.end())
     }
 
@@ -551,7 +557,8 @@ impl<Prov: Copy, Extra> Allocation<Prov, Extra> {
 
             (
                 provenance.first().unwrap().0,
-                provenance.last().unwrap().0 + cx.data_layout().pointer_size,
+                // TODO: More complexity needed here. val_size vs ty_size.
+                provenance.last().unwrap().0 + cx.data_layout().ptr_layout(None).val_size,
             )
         };
         let start = range.start;
@@ -572,7 +579,8 @@ impl<Prov: Copy, Extra> Allocation<Prov, Extra> {
         if last > end {
             if Prov::ERR_ON_PARTIAL_PTR_OVERWRITE {
                 return Err(AllocError::PartialPointerOverwrite(
-                    last - cx.data_layout().pointer_size,
+                    // TODO: More complexity needed here. val_size vs ty_size.
+                    last - cx.data_layout().ptr_layout(None).val_size,
                 ));
             }
             warn!(

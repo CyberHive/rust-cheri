@@ -24,18 +24,20 @@ impl<'a, 'tcx> VirtualIndex {
         debug!("get_fn({llvtable:?}, {ty:?}, {self:?})");
         let llty = bx.fn_ptr_backend_type(fn_abi);
         let llvtable = bx.pointercast(llvtable, bx.type_ptr_to(llty));
+        let dl = &bx.data_layout();
 
         if bx.cx().sess().opts.unstable_opts.virtual_function_elimination
             && bx.cx().sess().lto() == Lto::Fat
         {
             let typeid =
                 bx.typeid_metadata(typeid_for_trait_ref(bx.tcx(), expect_dyn_trait_in_self(ty)));
-            let vtable_byte_offset = self.0 * bx.data_layout().pointer_size.bytes();
+            // TODO: val_size vs ty_size.
+            let vtable_byte_offset = self.0 * dl.ptr_layout(Some(dl.instruction_address_space)).ty_size.bytes();
             let type_checked_load = bx.type_checked_load(llvtable, vtable_byte_offset, typeid);
             let func = bx.extract_value(type_checked_load, 0);
             bx.pointercast(func, llty)
         } else {
-            let ptr_align = bx.tcx().data_layout.pointer_align.abi;
+            let ptr_align = dl.ptr_layout(Some(dl.instruction_address_space)).align.abi;
             let gep = bx.inbounds_gep(llty, llvtable, &[bx.const_usize(self.0)]);
             let ptr = bx.load(llty, gep, ptr_align);
             bx.nonnull_metadata(ptr);
@@ -55,9 +57,12 @@ impl<'a, 'tcx> VirtualIndex {
 
         let llty = bx.type_isize();
         let llvtable = bx.pointercast(llvtable, bx.type_ptr_to(llty));
-        let usize_align = bx.tcx().data_layout.pointer_align.abi;
+        let dl = &bx.data_layout();
+        // NOTE: This was previously `usize_align`. Was there some significance to that or is the
+        // pointer alignment the correct thing to use here?
+        let ptr_align = dl.ptr_layout(Some(dl.instruction_address_space)).align.abi;
         let gep = bx.inbounds_gep(llty, llvtable, &[bx.const_usize(self.0)]);
-        let ptr = bx.load(llty, gep, usize_align);
+        let ptr = bx.load(llty, gep, ptr_align);
         // VTable loads are invariant.
         bx.set_invariant_load(ptr);
         ptr
@@ -102,7 +107,8 @@ pub fn get_vtable<'tcx, Cx: CodegenMethods<'tcx>>(
     let vtable_alloc_id = tcx.vtable_allocation((ty, trait_ref));
     let vtable_allocation = tcx.global_alloc(vtable_alloc_id).unwrap_memory();
     let vtable_const = cx.const_data_from_alloc(vtable_allocation);
-    let align = cx.data_layout().pointer_align.abi;
+    let dl = &cx.data_layout();
+    let align = dl.ptr_layout(Some(dl.instruction_address_space)).align.abi;
     let vtable = cx.static_addr_of(vtable_const, align, Some("vtable"));
 
     cx.create_vtable_debuginfo(ty, trait_ref, vtable);
