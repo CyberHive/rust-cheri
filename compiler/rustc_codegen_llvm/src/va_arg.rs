@@ -18,10 +18,11 @@ fn round_pointer_up_to_alignment<'ll>(
     ptr_ty: &'ll Type,
 ) -> &'ll Value {
     // TODO: Safe for CHERI?
-    let mut ptr_as_int = bx.ptrtoint(addr, bx.cx().type_isize());
+    let mut ptr_as_int = bx.get_pointer_address(addr);
     ptr_as_int = bx.add(ptr_as_int, bx.cx().const_i32(align.bytes() as i32 - 1));
     ptr_as_int = bx.and(ptr_as_int, bx.cx().const_i32(-(align.bytes() as i32)));
-    bx.inttoptr(ptr_as_int, ptr_ty)
+    let int_as_ptr = bx.set_pointer_address(addr, ptr_as_int);
+    bx.pointercast(int_as_ptr, ptr_ty)
 }
 
 fn emit_direct_ptr_va_arg<'ll, 'tcx>(

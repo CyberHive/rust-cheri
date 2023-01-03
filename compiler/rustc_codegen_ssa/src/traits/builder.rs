@@ -228,6 +228,9 @@ pub trait BuilderMethods<'a, 'tcx>:
     fn icmp(&mut self, op: IntPredicate, lhs: Self::Value, rhs: Self::Value) -> Self::Value;
     fn fcmp(&mut self, op: RealPredicate, lhs: Self::Value, rhs: Self::Value) -> Self::Value;
 
+    fn get_pointer_address(&mut self, ptr: Self::Value) -> Self::Value;
+    fn set_pointer_address(&mut self, ptr: Self::Value, addr: Self::Value) -> Self::Value;
+
     fn memcpy(
         &mut self,
         dst: Self::Value,

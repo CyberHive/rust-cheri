@@ -831,7 +831,7 @@ fn llvm_fixup_input<'ll, 'tcx>(
             let count = 16 / layout.size.bytes();
             let vec_ty = bx.cx.type_vector(elem_ty, count);
             if let Primitive::Pointer = s.primitive() {
-                value = bx.ptrtoint(value, bx.cx.type_isize());
+                value = bx.get_pointer_address(value);
             }
             bx.insert_element(bx.const_undef(vec_ty), value, bx.const_i32(0))
         }
@@ -908,7 +908,8 @@ fn llvm_fixup_output<'ll, 'tcx>(
         (InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::vreg_low16), Abi::Scalar(s)) => {
             value = bx.extract_element(value, bx.const_i32(0));
             if let Primitive::Pointer = s.primitive() {
-                value = bx.inttoptr(value, layout.llvm_type(bx.cx));
+                let nullptr = bx.const_null(layout.llvm_type(bx.cx));
+                value = bx.set_pointer_address(nullptr, value);
             }
             value
         }

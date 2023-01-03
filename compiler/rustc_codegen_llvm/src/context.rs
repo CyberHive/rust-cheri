@@ -27,7 +27,7 @@ use rustc_session::config::{CrateType, DebugInfo, PAuthKey, PacRet};
 use rustc_session::Session;
 use rustc_span::source_map::Span;
 use rustc_target::abi::{
-    call::FnAbi, HasDataLayout, PointeeInfo, Size, TargetDataLayout, VariantIdx,
+    call::FnAbi, AddressSpace, HasDataLayout, PointeeInfo, Size, TargetDataLayout, VariantIdx,
 };
 use rustc_target::spec::{HasTargetSpec, RelocModel, Target, TlsModel};
 use smallvec::SmallVec;
@@ -973,6 +973,15 @@ impl<'ll> CodegenCx<'ll, '_> {
             }
             ifn!(format!("llvm.ptrmask.p{:?}i8", t.0.0), fn(t.1, t_isize) -> t.1);
         }
+
+        ifn!(
+            "llvm.cheri.cap.address.get".to_string(),
+            fn(self.type_i8p_ext(AddressSpace(200))) -> t_isize
+        );
+        ifn!(
+            "llvm.cheri.cap.address.set".to_string(),
+            fn(self.type_i8p_ext(AddressSpace(200)), t_isize) -> self.type_i8p_ext(AddressSpace(200))
+        );
 
         None
     }

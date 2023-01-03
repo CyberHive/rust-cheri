@@ -31,6 +31,8 @@ pub trait BaseTypeMethods<'tcx>: Backend<'tcx> {
     /// Returns the number of elements in `self` if it is a LLVM vector type.
     fn vector_length(&self, ty: Self::Type) -> usize;
 
+    fn address_space(&self, ty: Self::Type) -> AddressSpace;
+
     fn float_width(&self, ty: Self::Type) -> usize;
 
     /// Retrieves the bit width of the integer type `self`.

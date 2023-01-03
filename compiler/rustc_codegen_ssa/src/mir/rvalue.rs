@@ -189,8 +189,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                         assert!(bx.cx().is_backend_immediate(cast));
                         let llptr = operand.immediate();
                         let llcast_ty = bx.cx().immediate_backend_type(cast);
-                        let lladdr = bx.ptrtoint(llptr, llcast_ty);
-                        OperandValue::Immediate(lladdr)
+                        let lladdr = bx.get_pointer_address(llptr);
+                        let llcast_addr = bx.intcast(lladdr, llcast_ty, false);
+                        OperandValue::Immediate(llcast_addr)
                     }
                     mir::CastKind::Pointer(PointerCast::ReifyFnPointer) => {
                         match *operand.layout.ty.kind() {

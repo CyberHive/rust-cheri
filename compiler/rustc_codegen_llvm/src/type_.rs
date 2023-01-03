@@ -205,6 +205,13 @@ impl<'ll, 'tcx> BaseTypeMethods<'tcx> for CodegenCx<'ll, 'tcx> {
         unsafe { llvm::LLVMGetVectorSize(ty) as usize }
     }
 
+    fn address_space(&self, ty: &'ll Type) -> AddressSpace {
+        match self.type_kind(ty) {
+            TypeKind::Pointer => unsafe { AddressSpace(llvm::LLVMGetPointerAddressSpace(ty)) },
+            other => bug!("address_space called on unsupported type {:?}", other),
+        }
+    }
+
     fn float_width(&self, ty: &'ll Type) -> usize {
         match self.type_kind(ty) {
             TypeKind::Float => 32,

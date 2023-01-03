@@ -287,7 +287,7 @@ pub fn cast_to_dyn_star<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     // a pointer, and really we should ensure that the value is a suitable
     // pointer earlier in the compilation process.
     let src = match src_ty_and_layout.pointee_info_at(bx.cx(), Size::ZERO) {
-        Some(_) => bx.ptrtoint(src, bx.cx().type_isize()),
+        Some(_) => bx.get_pointer_address(src),
         None => bx.bitcast(src, bx.type_isize()),
     };
     (src, unsized_info(bx, src_ty_and_layout.ty, dst_ty, old_info))

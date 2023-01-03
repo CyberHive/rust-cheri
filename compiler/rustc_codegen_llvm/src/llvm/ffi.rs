@@ -1036,6 +1036,8 @@ extern "C" {
     pub fn LLVMPointerType(ElementType: &Type, AddressSpace: c_uint) -> &Type;
     pub fn LLVMVectorType(ElementType: &Type, ElementCount: c_uint) -> &Type;
 
+    pub fn LLVMGetPointerAddressSpace(PointerTy: &Type) -> c_uint;
+
     pub fn LLVMGetElementType(Ty: &Type) -> &Type;
     pub fn LLVMGetVectorSize(VectorTy: &Type) -> c_uint;
 

@@ -1846,7 +1846,8 @@ unsupported {} from `{}` with element `{}` of size `{}` to `{}`"#,
             _ => return_error!("expected `usize`, got `{}`", out_elem),
         }
 
-        return Ok(bx.ptrtoint(args[0].immediate(), llret_ty));
+        let addr = bx.get_pointer_address(args[0].immediate());
+        return Ok(&bx.intcast(addr, llret_ty, false));
     }
 
     if name == sym::simd_from_exposed_addr {
@@ -1871,7 +1872,8 @@ unsupported {} from `{}` with element `{}` of size `{}` to `{}`"#,
             _ => return_error!("expected pointer, got `{}`", out_elem),
         }
 
-        return Ok(bx.inttoptr(args[0].immediate(), llret_ty));
+        let nullptr = bx.const_null(llret_ty);
+        return Ok(bx.set_pointer_address(nullptr, args[0].immediate()));
     }
 
     if name == sym::simd_cast || name == sym::simd_as {

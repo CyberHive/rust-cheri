@@ -841,6 +841,38 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         unsafe { llvm::LLVMBuildFCmp(self.llbuilder, op as c_uint, lhs, rhs, UNNAMED) }
     }
 
+    /* Pointer interactions */
+    fn get_pointer_address(&mut self, ptr: &'ll Value) -> &'ll Value {
+        let ptr_ty = self.cx.val_ty(ptr);
+
+        assert_eq!(self.cx.type_kind(ptr_ty), TypeKind::Pointer);
+
+        // Check if we are dealing with a CHERI fat pointer or not. TODO: We can do better than
+        // this.
+        if self.cx.address_space(ptr_ty).0 != 200 {
+            return self.ptrtoint(ptr, self.type_isize());
+        }
+
+        self.call_intrinsic("llvm.cheri.cap.address.get", &[ptr])
+    }
+
+    fn set_pointer_address(&mut self, ptr: &'ll Value, addr: &'ll Value) -> &'ll Value {
+        let ptr_ty = self.cx.val_ty(ptr);
+
+        assert_eq!(self.cx.type_kind(ptr_ty), TypeKind::Pointer);
+
+        // Check if we are dealing with a CHERI fat pointer or not. TODO: We can do better than
+        // this.
+        if self.cx.address_space(ptr_ty).0 != 200 {
+            return self.inttoptr(addr, ptr_ty);
+        }
+
+        // TODO: Check if we are setting the address of a null capability. If so it's not going to
+        // produce a dereferencable capability anyway, so just return another null capability.
+
+        self.call_intrinsic("llvm.cheri.cap.address.set", &[ptr, addr])
+    }
+
     /* Miscellaneous instructions */
     fn memcpy(
         &mut self,
