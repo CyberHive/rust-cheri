@@ -4,7 +4,7 @@
 use rustc_hir::def::Namespace;
 use rustc_middle::ty::layout::{LayoutOf, PrimitiveExt, TyAndLayout};
 use rustc_middle::ty::print::{FmtPrinter, PrettyPrinter};
-use rustc_middle::ty::{ConstInt, Ty};
+use rustc_middle::ty::{ConstInt, ScalarInt, Ty};
 use rustc_middle::{mir, ty};
 use rustc_target::abi::{self, Abi, Align, HasDataLayout, Size, TagEncoding};
 use rustc_target::abi::{VariantIdx, Variants};
@@ -65,6 +65,24 @@ impl<Prov: Provenance> Immediate<Prov> {
     #[cfg_attr(debug_assertions, track_caller)] // only in debug builds due to perf (see #98980)
     pub fn to_scalar(self) -> Scalar<Prov> {
         match self {
+            Immediate::Scalar(val) => val,
+            Immediate::ScalarPair(..) => bug!("Got a scalar pair where a scalar was expected"),
+            Immediate::Uninit => bug!("Got uninit where a scalar was expected"),
+        }
+    }
+
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)] // only in debug builds due to perf (see #98980)
+    pub fn to_scalar_with_layout<'tcx>(self, layout: TyAndLayout<'tcx>) -> Scalar<Prov> {
+        match self {
+            Immediate::Scalar(Scalar::Int(int)) => Scalar::Int(
+                ScalarInt::try_from_uint_r(
+                    int.assert_bits(int.val_size()),
+                    layout.ty_size,
+                    layout.val_size,
+                )
+                .unwrap(),
+            ),
             Immediate::Scalar(val) => val,
             Immediate::ScalarPair(..) => bug!("Got a scalar pair where a scalar was expected"),
             Immediate::Uninit => bug!("Got uninit where a scalar was expected"),
@@ -732,7 +750,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                 (discr_val, index.0)
             }
             TagEncoding::Niche { untagged_variant, ref niche_variants, niche_start } => {
-                let tag_val = tag_val.to_scalar();
+                let tag_val = tag_val.to_scalar_with_layout(tag_val.layout);
                 // Compute the variant this niche value/"tag" corresponds to. With niche layout,
                 // discriminant (encoded in niche/tag) and variant index are the same.
                 let variants_start = niche_variants.start().as_u32();
