@@ -296,9 +296,12 @@ impl<Prov> Scalar<Prov> {
     ) -> Result<Result<u128, Pointer<Prov>>, ScalarSizeMismatch> {
         assert_ne!(target_size.bytes(), 0, "you should never look at the bits of a ZST");
         Ok(match self {
-            Scalar::Int(int) => Ok(int.to_bits(target_size).map_err(|size| {
-                ScalarSizeMismatch { target_size: target_size.bytes(), data_size: size.bytes() }
-            })?),
+            Scalar::Int(int) => {
+                // Pointers on CHERI report larger sizes than they actually store.
+                // TODO: look at range rather than size in that case.
+                assert!(int.size() <= target_size, "{:?} {:?}", int.size(), target_size);
+                Ok(int.assert_bits(int.size()))
+            },
             Scalar::Ptr(ptr, sz) => {
                 if target_size.bytes() != u64::from(sz) {
                     return Err(ScalarSizeMismatch {

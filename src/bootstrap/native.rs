@@ -16,6 +16,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use home::home_dir;
+
 use crate::bolt::{instrument_with_bolt_inplace, optimize_library_with_bolt_inplace};
 use crate::builder::{Builder, RunConfig, ShouldRun, Step};
 use crate::channel;
@@ -1001,9 +1003,7 @@ impl Step for TestHelpers {
         } else if self.target == "riscv32imcxcheri-unknown-none-purecap" {
             TargetSelection::from_user("riscv32-unknown-elf")
         } else if self.target == "morello-unknown-none-purecap" {
-            TargetSelection::from_user("aarch64-none-elf")
-        } else if self.target == "morello-unknown-freebsd-purecap" {
-            TargetSelection::from_user("aarch64-none-freebsd")
+            TargetSelection::from_user("aarch64-unknown-elf")
         } else {
             self.target
         };
@@ -1029,6 +1029,14 @@ impl Step for TestHelpers {
                 cfg.archiver(ar);
             }
             cfg.compiler(builder.cc(target));
+            if self.target == "morello-unknown-freebsd-purecap" {
+                let sysroot = match home_dir() {
+                    Some(path) => path.as_path().join("cheri").join("output").join("rootfs-morello-purecap"),
+                    None => Path::new("").to_path_buf(),
+                };
+                let sysroot = sysroot.into_os_string().into_string().unwrap();
+                cfg.flag(&format!("--sysroot={}", sysroot));
+            }
         }
         cfg.cargo_metadata(false)
             .out_dir(&dst)

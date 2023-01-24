@@ -29,6 +29,7 @@ use crate::{compile, Crate};
 use crate::{Build, CLang, DocTests, GitRepo, Mode};
 
 pub use crate::Compiler;
+use home::home_dir;
 // FIXME: replace with std::lazy after it gets stabilized and reaches beta
 use once_cell::sync::{Lazy, OnceCell};
 use xz2::bufread::XzDecoder;
@@ -1737,6 +1738,16 @@ impl<'a> Builder<'a> {
         if self.is_fuse_ld_lld(target) {
             rustflags.arg("-Clink-args=-fuse-ld=lld");
         }
+        if target == "morello-unknown-freebsd-purecap" {
+            rustflags.arg("-Clink-args=-march=morello+c64");
+            rustflags.arg("-Clink-args=-mabi=purecap");
+            let sysroot = match home_dir() {
+                Some(path) => path.as_path().join("cheri").join("output").join("rootfs-morello-purecap"),
+                None => Path::new("").to_path_buf(),
+            };
+            let sysroot = sysroot.into_os_string().into_string().unwrap();
+            rustflags.arg(&format!("-Clink-args=--sysroot={}", sysroot));
+        }
         self.lld_flags(target).for_each(|flag| {
             rustdocflags.arg(&flag);
         });
@@ -2097,6 +2108,9 @@ impl<'a> Builder<'a> {
                 rustflags.arg(&format!("-Cllvm-args=-import-instr-limit={}", limit));
             }
         }
+
+        println!("{:?}", cargo.get_envs());
+        cargo.arg("-vv");
 
         Cargo { command: cargo, rustflags, rustdocflags }
     }

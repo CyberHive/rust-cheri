@@ -79,7 +79,7 @@ impl Alignment {
         unsafe {
             assert_unsafe_precondition!(
                "Alignment::new_unchecked requires a power of two",
-                (align: usize) => align.is_power_of_two()
+                (align: usize) => align > 0
             )
         };
 

@@ -114,6 +114,7 @@ use std::str;
 
 use config::Target;
 use filetime::FileTime;
+use home::home_dir;
 use once_cell::sync::OnceCell;
 
 use crate::builder::Kind;
@@ -1075,6 +1076,16 @@ impl Build {
         // LLVM/etc are all properly compiled.
         if target.contains("apple-darwin") {
             base.push("-stdlib=libc++".into());
+        }
+
+        println!("cflags requested for {:?}", &target.triple);
+        if &*target.triple == "morello-unknown-freebsd-purecap" {
+            let sysroot = match home_dir() {
+                Some(path) => path.as_path().join("cheri").join("output").join("rootfs-morello-purecap"),
+                None => Path::new("").to_path_buf(),
+            };
+            let sysroot = sysroot.into_os_string().into_string().unwrap();
+            base.push(format!("--sysroot={}", sysroot));
         }
 
         // Work around an apparently bad MinGW / GCC optimization,

@@ -32,6 +32,7 @@ use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::str;
 
 use glob::glob;
+use home::home_dir;
 use lazy_static::lazy_static;
 use tracing::*;
 
@@ -2005,6 +2006,14 @@ impl<'test> TestCx<'test> {
             if !is_rustdoc {
                 if let Some(ref linker) = self.config.linker {
                     rustc.arg(format!("-Clinker={}", linker));
+                }
+                if self.config.target == "morello-unknown-freebsd-purecap" {
+                    let sysroot = match home_dir() {
+                        Some(path) => path.as_path().join("cheri").join("output").join("rootfs-morello-purecap"),
+                        None => Path::new("").to_path_buf(),
+                    };
+                    let sysroot = sysroot.into_os_string().into_string().unwrap();
+                    rustc.arg(format!("-Clink-args=--sysroot={}", sysroot));
                 }
             }
         }

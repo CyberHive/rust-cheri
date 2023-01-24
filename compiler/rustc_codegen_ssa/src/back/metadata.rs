@@ -195,7 +195,6 @@ pub(crate) fn create_object_file(sess: &Session) -> Option<write::Object<'static
         }
         Architecture::Aarch64 => {
             let mut e_flags: u32 = 0x0;
-            println!("{}", sess.target.arch);
             if sess.target.arch == "morello+c64" {
                 e_flags |= elf::EF_AARCH64_CHERI_PURECAP;
             }
