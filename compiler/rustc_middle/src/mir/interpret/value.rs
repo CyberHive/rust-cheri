@@ -493,7 +493,11 @@ pub fn get_slice_bytes<'tcx>(cx: &impl HasDataLayout, val: ConstValue<'tcx>) -> 
         data.inner()
             .get_bytes_strip_provenance(
                 cx,
-                AllocRange { start: Size::from_bytes(start), size: Size::from_bytes(len) },
+                AllocRange {
+                    start: Size::from_bytes(start),
+                    total_size: Size::from_bytes(len),
+                    val_size: Size::from_bytes(len),
+                },
             )
             .unwrap_or_else(|err| bug!("const slice is invalid: {:?}", err))
     } else {

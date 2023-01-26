@@ -478,7 +478,7 @@ impl<'a, Ty> ArgAbi<'a, Ty> {
             Abi::Scalar(scalar) => PassMode::Direct(scalar_attrs(&layout, scalar, Size::ZERO)),
             Abi::ScalarPair(a, b) => PassMode::Pair(
                 scalar_attrs(&layout, a, Size::ZERO),
-                scalar_attrs(&layout, b, a.size(cx).align_to(b.align(cx).abi)),
+                scalar_attrs(&layout, b, a.ty_size(cx).align_to(b.align(cx).abi)),
             ),
             Abi::Vector { .. } => PassMode::Direct(ArgAttributes::new()),
             Abi::Aggregate { .. } => PassMode::Direct(ArgAttributes::new()),

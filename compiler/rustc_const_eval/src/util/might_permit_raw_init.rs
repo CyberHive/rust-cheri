@@ -83,7 +83,7 @@ fn might_permit_raw_init_lax<'tcx>(
             InitKind::UninitMitigated0x01Fill => {
                 // The range must include an 0x01-filled buffer.
                 let mut val: u128 = 0x01;
-                for _ in 1..s.size(cx).bytes() {
+                for _ in 1..s.ty_size(cx).bytes() {
                     // For sizes >1, repeat the 0x01.
                     val = (val << 8) | 0x01;
                 }

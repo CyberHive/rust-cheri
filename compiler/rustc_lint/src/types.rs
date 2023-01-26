@@ -819,7 +819,7 @@ pub(crate) fn repr_nullable_ptr<'tcx>(
         if let Abi::Scalar(field_ty_scalar) = field_ty_abi {
             match field_ty_scalar.valid_range(cx) {
                 WrappingRange { start: 0, end }
-                    if end == field_ty_scalar.size(&cx.tcx).unsigned_int_max() - 1 =>
+                    if end == field_ty_scalar.ty_size(&cx.tcx).unsigned_int_max() - 1 =>
                 {
                     return Some(get_nullable_type(cx, field_ty).unwrap());
                 }
@@ -1369,7 +1369,7 @@ impl<'tcx> LateLintPass<'tcx> for VariantSizeDifferences {
                 return
             };
 
-            let tag_size = tag.size(&cx.tcx).bytes();
+            let tag_size = tag.ty_size(&cx.tcx).bytes();
 
             debug!(
                 "enum `{}` is {} bytes large with layout:\n{:#?}",

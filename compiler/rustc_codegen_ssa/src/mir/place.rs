@@ -100,7 +100,7 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
                     self.llval
                 }
                 Abi::ScalarPair(a, b)
-                    if offset == a.size(bx.cx()).align_to(b.align(bx.cx()).abi) =>
+                    if offset == a.ty_size(bx.cx()).align_to(b.align(bx.cx()).abi) =>
                 {
                     // Offset matches second field.
                     let ty = bx.backend_type(self.layout);

@@ -202,11 +202,11 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
             // Extract a scalar component from a pair.
             (OperandValue::Pair(a_llval, b_llval), Abi::ScalarPair(a, b)) => {
                 if offset.bytes() == 0 {
-                    assert_eq!(field.size, a.size(bx.cx()));
+                    assert_eq!(field.size, a.ty_size(bx.cx()));
                     OperandValue::Immediate(a_llval)
                 } else {
-                    assert_eq!(offset, a.size(bx.cx()).align_to(b.align(bx.cx()).abi));
-                    assert_eq!(field.size, b.size(bx.cx()));
+                    assert_eq!(offset, a.ty_size(bx.cx()).align_to(b.align(bx.cx()).abi));
+                    assert_eq!(field.size, b.ty_size(bx.cx()));
                     OperandValue::Immediate(b_llval)
                 }
             }
@@ -315,7 +315,7 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
                     bug!("store_with_flags: invalid ScalarPair layout: {:#?}", dest.layout);
                 };
                 let ty = bx.backend_type(dest.layout);
-                let b_offset = a_scalar.size(bx).align_to(b_scalar.align(bx).abi);
+                let b_offset = a_scalar.ty_size(bx).align_to(b_scalar.align(bx).abi);
 
                 let llptr = bx.struct_gep(ty, dest.llval, 0);
                 let val = bx.from_immediate(a);

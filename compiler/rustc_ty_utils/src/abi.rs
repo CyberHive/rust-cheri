@@ -456,7 +456,7 @@ fn fn_abi_adjust_for_abi<'tcx>(
             }
 
             let size = arg.layout.size;
-            if arg.layout.is_unsized() || size > Pointer.size(cx) {
+            if arg.layout.is_unsized() || size > Pointer.ty_size(cx) {
                 arg.make_indirect();
             } else {
                 // We want to pass small aggregates as immediates, but using

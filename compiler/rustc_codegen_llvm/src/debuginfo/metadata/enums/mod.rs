@@ -444,17 +444,17 @@ fn compute_discriminant_value<'ll, 'tcx>(
                     .valid_range;
 
                 let min = valid_range.start.min(valid_range.end);
-                let min = tag.size(cx).truncate(min);
+                let min = tag.ty_size(cx).truncate(min);
 
                 let max = valid_range.start.max(valid_range.end);
-                let max = tag.size(cx).truncate(max);
+                let max = tag.ty_size(cx).truncate(max);
 
                 DiscrResult::Range(min, max)
             } else {
                 let value = (variant_index.as_u32() as u128)
                     .wrapping_sub(niche_variants.start().as_u32() as u128)
                     .wrapping_add(niche_start);
-                let value = tag.size(cx).truncate(value);
+                let value = tag.ty_size(cx).truncate(value);
                 DiscrResult::Value(value)
             }
         }

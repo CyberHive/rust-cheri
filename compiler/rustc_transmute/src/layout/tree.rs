@@ -236,7 +236,7 @@ pub(crate) mod rustc {
 
             if let Variants::Multiple { tag, .. } = layout.variants() {
                 discriminant_align = tag.align(&ctx).abi;
-                discriminant_size = tag.size(&ctx).bytes_usize();
+                discriminant_size = tag.ty_size(&ctx).bytes_usize();
             } else {
                 discriminant_align = Align::ONE;
                 discriminant_size = 0;

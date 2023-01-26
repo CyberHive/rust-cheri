@@ -116,11 +116,11 @@ where
             (Immediate::ScalarPair(a_val, b_val), Abi::ScalarPair(a, b)) => {
                 assert!(matches!(field_layout.abi, Abi::Scalar(..)));
                 Immediate::from(if offset.bytes() == 0 {
-                    debug_assert_eq!(field_layout.size, a.size(self));
+                    debug_assert_eq!(field_layout.size, a.ty_size(self));
                     a_val
                 } else {
-                    debug_assert_eq!(offset, a.size(self).align_to(b.align(self).abi));
-                    debug_assert_eq!(field_layout.size, b.size(self));
+                    debug_assert_eq!(offset, a.ty_size(self).align_to(b.align(self).abi));
+                    debug_assert_eq!(field_layout.size, b.ty_size(self));
                     b_val
                 })
             }

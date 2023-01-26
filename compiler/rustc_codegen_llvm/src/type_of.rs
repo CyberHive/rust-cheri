@@ -367,7 +367,7 @@ impl<'tcx> LayoutLlvmExt<'tcx> for TyAndLayout<'tcx> {
             return cx.type_i1();
         }
 
-        let offset = if index == 0 { Size::ZERO } else { a.size(cx).align_to(b.align(cx).abi) };
+        let offset = if index == 0 { Size::ZERO } else { a.ty_size(cx).align_to(b.align(cx).abi) };
         self.scalar_llvm_type_at(cx, scalar, offset)
     }
 

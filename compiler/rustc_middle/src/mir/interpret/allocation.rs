@@ -168,7 +168,8 @@ impl AllocError {
 #[derive(Copy, Clone)]
 pub struct AllocRange {
     pub start: Size,
-    pub size: Size,
+    pub total_size: Size,
+    pub val_size: Size,
 }
 
 impl fmt::Debug for AllocRange {
@@ -179,26 +180,27 @@ impl fmt::Debug for AllocRange {
 
 /// Free-starting constructor for less syntactic overhead.
 #[inline(always)]
-pub fn alloc_range(start: Size, size: Size) -> AllocRange {
-    AllocRange { start, size }
+pub fn alloc_range(start: Size, total_size: Size, val_size: Size) -> AllocRange {
+    assert!(total_size >= val_size);
+    AllocRange { start, total_size, val_size }
 }
 
 impl AllocRange {
     #[inline]
     pub fn from(r: Range<Size>) -> Self {
-        alloc_range(r.start, r.end - r.start) // `Size` subtraction (overflow-checked)
+        alloc_range(r.start, r.end - r.start, r.end - r.start) // `Size` subtraction (overflow-checked)
     }
 
     #[inline(always)]
     pub fn end(self) -> Size {
-        self.start + self.size // This does overflow checking.
+        self.start + self.total_size // This does overflow checking.
     }
 
     /// Returns the `subrange` within this range; panics if it is not a subrange.
     #[inline]
     pub fn subrange(self, subrange: AllocRange) -> AllocRange {
         let sub_start = self.start + subrange.start;
-        let range = alloc_range(sub_start, subrange.size);
+        let range = alloc_range(sub_start, subrange.total_size, subrange.val_size);
         assert!(range.end() <= self.end(), "access outside the bounds for given AllocRange");
         range
     }
@@ -420,8 +422,8 @@ impl<Prov: Provenance, Extra> Allocation<Prov, Extra> {
         let bits = read_target_uint(cx.data_layout().endian, bytes).unwrap();
 
         if read_provenance {
-            // TODO: More complexity needed here. val_size vs ty_size.
-            assert_eq!(range.size, cx.data_layout().ptr_layout(None).val_size);
+            // TODO: More complexity needed here. val vs ty_size.
+            assert_eq!(range.total_size, cx.data_layout().ptr_layout(None).ty_size);
 
             // When reading data with provenance, the easy case is finding provenance exactly where we
             // are reading, then we can put data and provenance back together and return that.
@@ -434,7 +436,7 @@ impl<Prov: Provenance, Extra> Allocation<Prov, Extra> {
             // If we can work on pointers byte-wise, join the byte-wise provenances.
             if Prov::OFFSET_IS_ADDR {
                 let mut prov = self.offset_get_provenance(cx, range.start);
-                for offset in 1..range.size.bytes() {
+                for offset in 1..range.total_size.bytes() {
                     let this_prov =
                         self.offset_get_provenance(cx, range.start + Size::from_bytes(offset));
                     prov = Prov::join(prov, this_prov);
@@ -448,7 +450,7 @@ impl<Prov: Provenance, Extra> Allocation<Prov, Extra> {
             // If we can just ignore provenance, do exactly that.
             if Prov::OFFSET_IS_ADDR {
                 // We just strip provenance.
-                return Ok(Scalar::from_uint(bits, range.size));
+                return Ok(Scalar::from_uint(bits, range.total_size));
             }
         }
 
@@ -458,7 +460,7 @@ impl<Prov: Provenance, Extra> Allocation<Prov, Extra> {
             return Err(AllocError::ReadPointerAsBytes);
         }
         // There is no provenance, we can just return the bits.
-        Ok(Scalar::from_uint(bits, range.size))
+        Ok(Scalar::from_uint(bits, range.total_size))
     }
 
     /// Writes a *non-ZST* scalar.
@@ -479,7 +481,7 @@ impl<Prov: Provenance, Extra> Allocation<Prov, Extra> {
 
         // `to_bits_or_ptr_internal` is the right method because we just want to store this data
         // as-is into memory.
-        let (bytes, provenance) = match val.to_bits_or_ptr_internal(range.size)? {
+        let (bytes, provenance) = match val.to_bits_or_ptr_internal(range.total_size)? {
             Err(val) => {
                 let (provenance, offset) = val.into_parts();
                 (u128::from(offset.bytes()), Some(provenance))
@@ -523,7 +525,10 @@ impl<Prov: Copy, Extra> Allocation<Prov, Extra> {
 
     /// Get the provenance of a single byte.
     fn offset_get_provenance(&self, cx: &impl HasDataLayout, offset: Size) -> Option<Prov> {
-        let prov = self.range_get_provenance(cx, alloc_range(offset, Size::from_bytes(1)));
+        let prov = self.range_get_provenance(
+            cx,
+            alloc_range(offset, Size::from_bytes(1), Size::from_bytes(1)),
+        );
         assert!(prov.len() <= 1);
         prov.first().map(|(_offset, prov)| *prov)
     }
@@ -642,7 +647,7 @@ impl<Prov: Copy, Extra> Allocation<Prov, Extra> {
             return AllocationProvenance { dest_provenance: Vec::new() };
         }
 
-        let size = src.size;
+        let size = src.total_size;
         let mut new_provenance = Vec::with_capacity(provenance.len() * (count as usize));
 
         // If `count` is large, this is rather wasteful -- we are allocating a big array here, which
@@ -1157,7 +1162,7 @@ impl<Prov: Copy, Extra> Allocation<Prov, Extra> {
     }
 
     fn mark_init(&mut self, range: AllocRange, is_init: bool) {
-        if range.size.bytes() == 0 {
+        if range.total_size.bytes() == 0 {
             return;
         }
         assert!(self.mutability == Mutability::Mut);
@@ -1232,14 +1237,14 @@ impl<Prov, Extra> Allocation<Prov, Extra> {
         if defined.ranges.len() <= 1 {
             self.init_mask.set_range_inbounds(
                 range.start,
-                range.start + range.size * repeat, // `Size` operations
+                range.start + range.total_size * repeat, // `Size` operations
                 defined.initial,
             );
             return;
         }
 
         for mut j in 0..repeat {
-            j *= range.size.bytes();
+            j *= range.total_size.bytes();
             j += range.start.bytes();
             let mut cur = defined.initial;
             for range in &defined.ranges {

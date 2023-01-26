@@ -93,8 +93,8 @@ fn scalar_pair<'tcx>(cx: &LayoutCx<'tcx, TyCtxt<'tcx>>, a: Scalar, b: Scalar) ->
     let dl = cx.data_layout();
     let b_align = b.align(dl);
     let align = a.align(dl).max(b_align).max(dl.aggregate_align);
-    let b_offset = a.size(dl).align_to(b_align.abi);
-    let size = (b_offset + b.size(dl)).align_to(align.abi);
+    let b_offset = a.ty_size(dl).align_to(b_align.abi);
+    let size = (b_offset + b.ty_size(dl)).align_to(align.abi);
 
     // HACK(nox): We iter on `b` and then `a` because `max_by_key`
     // returns the last maximum.
@@ -342,9 +342,9 @@ fn layout_of_uncached<'tcx>(
     let param_env = cx.param_env;
     let dl = cx.data_layout();
     let scalar_unit = |value: Primitive| {
-        let size = value.size(dl);
-        assert!(size.bits() <= 128);
-        Scalar::Initialized { value, valid_range: WrappingRange::full(size) }
+        let ty_size = value.ty_size(dl);
+        assert!(ty_size.bits() <= 128);
+        Scalar::Initialized { value, valid_range: WrappingRange::full(ty_size) }
     };
     let scalar = |value: Primitive| tcx.intern_layout(LayoutS::scalar(cx, scalar_unit(value)));
 
@@ -769,7 +769,7 @@ fn layout_of_uncached<'tcx>(
                 if def.is_unsafe_cell() {
                     let hide_niches = |scalar: &mut _| match scalar {
                         Scalar::Initialized { value, valid_range } => {
-                            *valid_range = WrappingRange::full(value.size(dl))
+                            *valid_range = WrappingRange::full(value.ty_size(dl))
                         }
                         // Already doesn't have any niches
                         Scalar::Union { .. } => {}
@@ -1190,7 +1190,7 @@ fn layout_of_uncached<'tcx>(
 
             if layout_variants.iter().all(|v| v.abi.is_uninhabited()) {
                 abi = Abi::Uninhabited;
-            } else if tag.size(dl) == size {
+            } else if tag.ty_size(dl) == size {
                 // Make sure we only use scalar layout when the enum is entirely its
                 // own tag (i.e. it has no padding nor any non-ZST variant fields).
                 abi = Abi::Scalar(tag);
@@ -1798,7 +1798,7 @@ fn record_layout_for_printing_outlined<'tcx>(
                 adt_kind.into(),
                 adt_packed,
                 match tag_encoding {
-                    TagEncoding::Direct => Some(tag.size(cx)),
+                    TagEncoding::Direct => Some(tag.ty_size(cx)),
                     _ => None,
                 },
                 variant_infos,

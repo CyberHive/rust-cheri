@@ -611,13 +611,13 @@ impl<'rt, 'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> ValidityVisitor<'rt, 'mir, '
         scalar: Scalar<M::Provenance>,
         scalar_layout: ScalarAbi,
     ) -> InterpResult<'tcx> {
-        let size = scalar_layout.size(self.ecx);
+        let ty_size = scalar_layout.ty_size(self.ecx);
         let valid_range = scalar_layout.valid_range(self.ecx);
         let WrappingRange { start, end } = valid_range;
-        let max_value = size.unsigned_int_max();
+        let max_value = ty_size.unsigned_int_max();
         assert!(end <= max_value);
         let bits = match scalar.try_to_int() {
-            Ok(int) => int.assert_bits(size),
+            Ok(int) => int.assert_bits(ty_size),
             Err(_) => {
                 // So this is a pointer then, and casting to an int failed.
                 // Can only happen during CTFE.

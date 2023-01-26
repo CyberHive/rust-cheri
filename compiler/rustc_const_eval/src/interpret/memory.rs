@@ -326,12 +326,14 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
 
         // Let the machine take some extra action
         let size = alloc.size();
+        // TODO: Can we do better here?
+        let val_size = alloc.size();
         M::before_memory_deallocation(
             *self.tcx,
             &mut self.machine,
             &mut alloc.extra,
             (alloc_id, prov),
-            alloc_range(Size::ZERO, size),
+            alloc_range(Size::ZERO, size, val_size),
         )?;
 
         // Don't forget to remember size and align of this now-dead allocation
@@ -573,7 +575,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
             },
         )?;
         if let Some((alloc_id, offset, prov, alloc)) = ptr_and_alloc {
-            let range = alloc_range(offset, size);
+            let range = alloc_range(offset, size, size);
             M::before_memory_read(*self.tcx, &self.machine, &alloc.extra, (alloc_id, prov), range)?;
             Ok(Some(AllocRef { alloc, range, tcx: *self.tcx, alloc_id }))
         } else {
@@ -639,7 +641,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
             // FIXME: can we somehow avoid looking up the allocation twice here?
             // We cannot call `get_raw_mut` inside `check_and_deref_ptr` as that would duplicate `&mut self`.
             let (alloc, machine) = self.get_alloc_raw_mut(alloc_id)?;
-            let range = alloc_range(offset, size);
+            let range = alloc_range(offset, size, size);
             M::before_memory_write(tcx, machine, &mut alloc.extra, (alloc_id, prov), range)?;
             Ok(Some(AllocRefMut { alloc, range, tcx, alloc_id }))
         } else {
@@ -917,7 +919,14 @@ impl<'tcx, 'a, Prov: Provenance, Extra> AllocRefMut<'a, 'tcx, Prov, Extra> {
     /// `offset` is relative to this allocation reference, not the base of the allocation.
     pub fn write_ptr_sized(&mut self, offset: Size, val: Scalar<Prov>) -> InterpResult<'tcx> {
         // TODO: More complexity needed here. val_size vs ty_size.
-        self.write_scalar(alloc_range(offset, self.tcx.data_layout().ptr_layout(None).ty_size), val)
+        self.write_scalar(
+            alloc_range(
+                offset,
+                self.tcx.data_layout().ptr_layout(None).ty_size,
+                self.tcx.data_layout().ptr_layout(None).val_size,
+            ),
+            val,
+        )
     }
 
     /// Mark the entire referenced range as uninitialized
@@ -954,7 +963,11 @@ impl<'tcx, 'a, Prov: Provenance, Extra> AllocRef<'a, 'tcx, Prov, Extra> {
     pub fn read_pointer(&self, offset: Size) -> InterpResult<'tcx, Scalar<Prov>> {
         // TODO: More complexity needed here. val_size vs ty_size.
         self.read_scalar(
-            alloc_range(offset, self.tcx.data_layout().ptr_layout(None).ty_size),
+            alloc_range(
+                offset,
+                self.tcx.data_layout().ptr_layout(None).ty_size,
+                self.tcx.data_layout().ptr_layout(None).val_size,
+            ),
             /*read_provenance*/ true,
         )
     }
@@ -1071,7 +1084,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
             return Ok(());
         };
         let src_alloc = self.get_alloc_raw(src_alloc_id)?;
-        let src_range = alloc_range(src_offset, size);
+        let src_range = alloc_range(src_offset, size, size);
         M::before_memory_read(
             *tcx,
             &self.machine,
@@ -1088,10 +1101,14 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
 
         // Checks provenance edges on the src, which needs to happen before
         // `prepare_provenance_copy`.
-        if src_alloc.range_has_provenance(&tcx, alloc_range(src_range.start, Size::ZERO)) {
+        if src_alloc
+            .range_has_provenance(&tcx, alloc_range(src_range.start, Size::ZERO, Size::ZERO))
+        {
             throw_unsup!(PartialPointerCopy(Pointer::new(src_alloc_id, src_range.start)));
         }
-        if src_alloc.range_has_provenance(&tcx, alloc_range(src_range.end(), Size::ZERO)) {
+        if src_alloc
+            .range_has_provenance(&tcx, alloc_range(src_range.end(), Size::ZERO, Size::ZERO))
+        {
             throw_unsup!(PartialPointerCopy(Pointer::new(src_alloc_id, src_range.end())));
         }
         let src_bytes = src_alloc.get_bytes_unchecked(src_range).as_ptr(); // raw ptr, so we can also get a ptr to the destination allocation
@@ -1105,7 +1122,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
 
         // Destination alloc preparations and access hooks.
         let (dest_alloc, extra) = self.get_alloc_raw_mut(dest_alloc_id)?;
-        let dest_range = alloc_range(dest_offset, size * num_copies);
+        let dest_range = alloc_range(dest_offset, size * num_copies, size * num_copies);
         M::before_memory_write(
             *tcx,
             extra,
@@ -1169,7 +1186,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
         // now fill in all the "init" data
         dest_alloc.mark_compressed_init_range(
             &compressed,
-            alloc_range(dest_offset, size), // just a single copy (i.e., not full `dest_range`)
+            alloc_range(dest_offset, size, size), // just a single copy (i.e., not full `dest_range`)
             num_copies,
         );
         // copy the provenance to the destination

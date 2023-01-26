@@ -221,7 +221,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                                         ConstantKind::from_bits(this.tcx, range, ty::ParamEnv::empty().and(discr_ty));
                                     let bool_ty = this.tcx.types.bool;
                                     if signed {
-                                        let scalar_size_extend = scalar.size(&this.tcx).sign_extend(range);
+                                        let scalar_size_extend = scalar.ty_size(&this.tcx).sign_extend(range);
                                         let discr_layout = this.tcx.layout_of(this.param_env.and(discr_ty));
                                         let truncated_val = discr_layout.unwrap().size.truncate(scalar_size_extend);
                                         range_val = ConstantKind::from_bits(

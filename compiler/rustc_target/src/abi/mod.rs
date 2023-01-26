@@ -838,7 +838,7 @@ pub enum Primitive {
 }
 
 impl Primitive {
-    pub fn size<C: HasDataLayout>(self, cx: &C) -> Size {
+    pub fn ty_size<C: HasDataLayout>(self, cx: &C) -> Size {
         let dl = cx.data_layout();
 
         match self {
@@ -847,6 +847,18 @@ impl Primitive {
             F64 => Size::from_bits(64),
             // TODO: More complexity is needed here.
             Pointer => dl.ptr_layout(None).ty_size,
+        }
+    }
+
+    pub fn val_size<C: HasDataLayout>(self, cx: &C) -> Size {
+        let dl = cx.data_layout();
+
+        match self {
+            Int(i, _) => i.size(),
+            F32 => Size::from_bits(32),
+            F64 => Size::from_bits(64),
+            // TODO: More complexity is needed here.
+            Pointer => dl.ptr_layout(None).val_size,
         }
     }
 
@@ -992,8 +1004,12 @@ impl Scalar {
         self.primitive().align(cx)
     }
 
-    pub fn size(self, cx: &impl HasDataLayout) -> Size {
-        self.primitive().size(cx)
+    pub fn ty_size(self, cx: &impl HasDataLayout) -> Size {
+        self.primitive().ty_size(cx)
+    }
+
+    pub fn val_size(self, cx: &impl HasDataLayout) -> Size {
+        self.primitive().val_size(cx)
     }
 
     #[inline]
@@ -1005,7 +1021,7 @@ impl Scalar {
     pub fn valid_range(&self, cx: &impl HasDataLayout) -> WrappingRange {
         match *self {
             Scalar::Initialized { valid_range, .. } => valid_range,
-            Scalar::Union { value } => WrappingRange::full(value.size(cx)),
+            Scalar::Union { value } => WrappingRange::full(value.ty_size(cx)),
         }
     }
 
@@ -1022,7 +1038,7 @@ impl Scalar {
     #[inline]
     pub fn is_always_valid<C: HasDataLayout>(&self, cx: &C) -> bool {
         match *self {
-            Scalar::Initialized { valid_range, .. } => valid_range.is_full_for(self.size(cx)),
+            Scalar::Initialized { valid_range, .. } => valid_range.is_full_for(self.ty_size(cx)),
             Scalar::Union { .. } => true,
         }
     }
@@ -1286,9 +1302,9 @@ impl Niche {
 
     pub fn available<C: HasDataLayout>(&self, cx: &C) -> u128 {
         let Self { value, valid_range: v, .. } = *self;
-        let size = value.size(cx);
-        assert!(size.bits() <= 128);
-        let max_value = size.unsigned_int_max();
+        let ty_size = value.ty_size(cx);
+        assert!(ty_size.bits() <= 128);
+        let max_value = ty_size.unsigned_int_max();
 
         // Find out how many values are outside the valid range.
         let niche = v.end.wrapping_add(1)..v.start;
@@ -1299,9 +1315,9 @@ impl Niche {
         assert!(count > 0);
 
         let Self { value, valid_range: v, .. } = *self;
-        let size = value.size(cx);
-        assert!(size.bits() <= 128);
-        let max_value = size.unsigned_int_max();
+        let ty_size = value.ty_size(cx);
+        assert!(ty_size.bits() <= 128);
+        let max_value = ty_size.unsigned_int_max();
 
         let niche = v.end.wrapping_add(1)..v.start;
         let available = niche.end.wrapping_sub(niche.start) & max_value;
@@ -1387,7 +1403,7 @@ pub struct LayoutS<'a> {
 impl<'a> LayoutS<'a> {
     pub fn scalar<C: HasDataLayout>(cx: &C, scalar: Scalar) -> Self {
         let largest_niche = Niche::from_scalar(cx, Size::ZERO, scalar);
-        let size = scalar.size(cx);
+        let size = scalar.ty_size(cx);
         let align = scalar.align(cx);
         LayoutS {
             variants: Variants::Single { index: VariantIdx::new(0) },

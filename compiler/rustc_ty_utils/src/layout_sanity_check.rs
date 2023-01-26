@@ -67,11 +67,11 @@ pub(super) fn sanity_check_layout<'tcx>(
             match layout.layout.abi() {
                 Abi::Scalar(scalar) => {
                     // No padding in scalars.
-                    let size = scalar.size(cx);
+                    let ty_size = scalar.ty_size(cx);
                     let align = scalar.align(cx).abi;
                     assert_eq!(
                         layout.layout.size(),
-                        size,
+                        ty_size,
                         "size mismatch between ABI and layout in {layout:#?}"
                     );
                     assert_eq!(
@@ -116,7 +116,7 @@ pub(super) fn sanity_check_layout<'tcx>(
                                 "`Scalar` field at non-0 offset in {inner:#?}",
                             );
                             assert_eq!(
-                                field.size, size,
+                                field.size, ty_size,
                                 "`Scalar` field with bad size in {inner:#?}",
                             );
                             assert_eq!(
@@ -137,17 +137,17 @@ pub(super) fn sanity_check_layout<'tcx>(
                     // Sanity-check scalar pairs. These are a bit more flexible and support
                     // padding, but we can at least ensure both fields actually fit into the layout
                     // and the alignment requirement has not been weakened.
-                    let size1 = scalar1.size(cx);
+                    let ty_size1 = scalar1.ty_size(cx);
                     let align1 = scalar1.align(cx).abi;
-                    let size2 = scalar2.size(cx);
+                    let ty_size2 = scalar2.ty_size(cx);
                     let align2 = scalar2.align(cx).abi;
                     assert!(
                         layout.layout.align().abi >= cmp::max(align1, align2),
                         "alignment mismatch between ABI and layout in {layout:#?}",
                     );
-                    let field2_offset = size1.align_to(align2);
+                    let field2_offset = ty_size1.align_to(align2);
                     assert!(
-                        layout.layout.size() >= field2_offset + size2,
+                        layout.layout.size() >= field2_offset + ty_size2,
                         "size mismatch between ABI and layout in {layout:#?}"
                     );
                     // Check that the underlying pair of fields matches.
@@ -199,7 +199,7 @@ pub(super) fn sanity_check_layout<'tcx>(
                         "`ScalarPair` first field at non-0 offset in {inner:#?}",
                     );
                     assert_eq!(
-                        field1.size, size1,
+                        field1.size, ty_size1,
                         "`ScalarPair` first field with bad size in {inner:#?}",
                     );
                     assert_eq!(
@@ -215,7 +215,7 @@ pub(super) fn sanity_check_layout<'tcx>(
                         "`ScalarPair` second field at bad offset in {inner:#?}",
                     );
                     assert_eq!(
-                        field2.size, size2,
+                        field2.size, ty_size2,
                         "`ScalarPair` second field with bad size in {inner:#?}",
                     );
                     assert_eq!(
@@ -233,7 +233,7 @@ pub(super) fn sanity_check_layout<'tcx>(
                         layout.layout.align().abi >= element.align(cx).abi,
                         "alignment mismatch between ABI and layout in {layout:#?}"
                     );
-                    let size = element.size(cx) * count;
+                    let size = element.ty_size(cx) * count;
                     assert_eq!(
                         layout.layout.size(),
                         size.align_to(cx.data_layout().vector_align(size).abi),
@@ -280,7 +280,7 @@ pub(super) fn sanity_check_layout<'tcx>(
                 }
                 // The top-level ABI and the ABI of the variants should be coherent.
                 let scalar_coherent = |s1: Scalar, s2: Scalar| {
-                    s1.size(cx) == s2.size(cx) && s1.align(cx) == s2.align(cx)
+                    s1.ty_size(cx) == s2.ty_size(cx) && s1.align(cx) == s2.align(cx)
                 };
                 let abi_coherent = match (layout.abi, variant.abi()) {
                     (Abi::Scalar(s1), Abi::Scalar(s2)) => scalar_coherent(s1, s2),

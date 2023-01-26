@@ -533,7 +533,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
             });
             OperandValue::Immediate(self.to_immediate(llval, place.layout))
         } else if let abi::Abi::ScalarPair(a, b) = place.layout.abi {
-            let b_offset = a.size(self).align_to(b.align(self).abi);
+            let b_offset = a.ty_size(self).align_to(b.align(self).abi);
             let pair_ty = place.layout.llvm_type(self);
 
             let mut load = |i, scalar: abi::Scalar, layout, align, offset| {

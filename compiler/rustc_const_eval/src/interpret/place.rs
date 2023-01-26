@@ -539,9 +539,10 @@ where
                         "write_immediate_to_mplace: invalid Scalar layout: {layout:#?}",
                     )
                 };
-                let size = s.size(&tcx);
-                assert_eq!(size, layout.size, "abi::Scalar size does not match layout size");
-                alloc.write_scalar(alloc_range(Size::ZERO, size), scalar)
+                let ty_size = s.ty_size(&tcx);
+                let val_size = s.val_size(&tcx);
+                assert_eq!(ty_size, layout.size, "abi::Scalar size does not match layout size");
+                alloc.write_scalar(alloc_range(Size::ZERO, ty_size, val_size), scalar)
             }
             Immediate::ScalarPair(a_val, b_val) => {
                 // We checked `ptr_align` above, so all fields will have the alignment they need.
@@ -553,16 +554,17 @@ where
                         layout
                     )
                 };
-                let (a_size, b_size) = (a.size(&tcx), b.size(&tcx));
-                let b_offset = a_size.align_to(b.align(&tcx).abi);
+                let (a_ty_size, b_ty_size) = (a.ty_size(&tcx), b.ty_size(&tcx));
+                let (a_val_size, b_val_size) = (a.val_size(&tcx), b.val_size(&tcx));
+                let b_offset = a_ty_size.align_to(b.align(&tcx).abi);
                 assert!(b_offset.bytes() > 0); // in `operand_field` we use the offset to tell apart the fields
 
                 // It is tempting to verify `b_offset` against `layout.fields.offset(1)`,
                 // but that does not work: We could be a newtype around a pair, then the
                 // fields do not match the `ScalarPair` components.
 
-                alloc.write_scalar(alloc_range(Size::ZERO, a_size), a_val)?;
-                alloc.write_scalar(alloc_range(b_offset, b_size), b_val)
+                alloc.write_scalar(alloc_range(Size::ZERO, a_ty_size, a_val_size), a_val)?;
+                alloc.write_scalar(alloc_range(b_offset, b_ty_size, b_val_size), b_val)
             }
             Immediate::Uninit => alloc.write_uninit(),
         }
@@ -815,11 +817,11 @@ where
                 // raw discriminants for enums are isize or bigger during
                 // their computation, but the in-memory tag is the smallest possible
                 // representation
-                let size = tag_layout.size(self);
-                let tag_val = size.truncate(discr_val);
+                let ty_size = tag_layout.ty_size(self);
+                let tag_val = ty_size.truncate(discr_val);
 
                 let tag_dest = self.place_field(dest, tag_field)?;
-                self.write_scalar(Scalar::from_uint(tag_val, size), &tag_dest)?;
+                self.write_scalar(Scalar::from_uint(tag_val, ty_size), &tag_dest)?;
             }
             abi::Variants::Multiple {
                 tag_encoding:

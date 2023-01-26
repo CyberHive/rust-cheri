@@ -312,10 +312,11 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
         // like a `Scalar` (or `ScalarPair`).
         Ok(match mplace.layout.abi {
             Abi::Scalar(abi::Scalar::Initialized { value: s, .. }) => {
-                let size = s.size(self);
-                assert_eq!(size, mplace.layout.size, "abi::Scalar size does not match layout size");
+                let ty_size = s.ty_size(self);
+                let val_size = s.val_size(self);
+                assert_eq!(ty_size, mplace.layout.size, "abi::Scalar size does not match layout size");
                 let scalar = alloc.read_scalar(
-                    alloc_range(Size::ZERO, size),
+                    alloc_range(Size::ZERO, ty_size, val_size),
                     /*read_provenance*/ s.is_ptr(),
                 )?;
                 Some(ImmTy { imm: scalar.into(), layout: mplace.layout })
@@ -327,15 +328,16 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                 // We checked `ptr_align` above, so all fields will have the alignment they need.
                 // We would anyway check against `ptr_align.restrict_for_offset(b_offset)`,
                 // which `ptr.offset(b_offset)` cannot possibly fail to satisfy.
-                let (a_size, b_size) = (a.size(self), b.size(self));
-                let b_offset = a_size.align_to(b.align(self).abi);
+                let (a_ty_size, b_ty_size) = (a.ty_size(self), b.ty_size(self));
+                let (a_val_size, b_val_size) = (a.val_size(self), b.val_size(self));
+                let b_offset = a_ty_size.align_to(b.align(self).abi);
                 assert!(b_offset.bytes() > 0); // in `operand_field` we use the offset to tell apart the fields
                 let a_val = alloc.read_scalar(
-                    alloc_range(Size::ZERO, a_size),
+                    alloc_range(Size::ZERO, a_ty_size, a_val_size),
                     /*read_provenance*/ a.is_ptr(),
                 )?;
                 let b_val = alloc.read_scalar(
-                    alloc_range(b_offset, b_size),
+                    alloc_range(b_offset, b_ty_size, b_val_size),
                     /*read_provenance*/ b.is_ptr(),
                 )?;
                 Some(ImmTy {
