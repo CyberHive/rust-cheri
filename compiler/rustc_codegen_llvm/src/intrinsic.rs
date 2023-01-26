@@ -88,6 +88,7 @@ impl<'ll, 'tcx> IntrinsicCallMethods<'tcx> for Builder<'_, 'll, 'tcx> {
     ) {
         let tcx = self.tcx;
         let callee_ty = instance.ty(tcx, ty::ParamEnv::reveal_all());
+        let dl = &tcx.data_layout;
 
         let ty::FnDef(def_id, substs) = *callee_ty.kind() else {
             bug!("expected fn item type, found {}", callee_ty);
@@ -165,7 +166,9 @@ impl<'ll, 'tcx> IntrinsicCallMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                 let ptr = args[0].immediate();
                 let load = if let PassMode::Cast(ty, _) = &fn_abi.ret.mode {
                     let llty = ty.llvm_type(self);
-                    let ptr = self.pointercast(ptr, self.type_ptr_to(llty));
+                    // TODO: Get the correct address space.
+                    let ptr =
+                        self.pointercast(ptr, self.type_ptr_to_ext(llty, dl.default_address_space));
                     self.volatile_load(llty, ptr)
                 } else {
                     self.volatile_load(self.layout_of(tp_ty).llvm_type(self), ptr)
@@ -310,12 +313,7 @@ impl<'ll, 'tcx> IntrinsicCallMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                         // as `RegKind::Integer` (see `FnAbi::adjust_for_abi`),
                         // so we re-use that same threshold here.
                         // TODO: Stop using pointer size as an equivalent for machine word size.
-                        layout.size()
-                            <= self
-                                .data_layout()
-                                .ptr_layout(Some(self.data_layout().alloca_address_space))
-                                .val_size
-                                * 2
+                        layout.size() <= dl.ptr_layout(Some(dl.alloca_address_space)).val_size * 2
                     }
                 };
 
@@ -325,14 +323,16 @@ impl<'ll, 'tcx> IntrinsicCallMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                     self.const_bool(true)
                 } else if use_integer_compare {
                     let integer_ty = self.type_ix(layout.size().bits());
-                    let ptr_ty = self.type_ptr_to(integer_ty);
+                    // TODO: Get the correct address space.
+                    let ptr_ty = self.type_ptr_to_ext(integer_ty, dl.default_address_space);
                     let a_ptr = self.bitcast(a, ptr_ty);
                     let a_val = self.load(integer_ty, a_ptr, layout.align().abi);
                     let b_ptr = self.bitcast(b, ptr_ty);
                     let b_val = self.load(integer_ty, b_ptr, layout.align().abi);
                     self.icmp(IntPredicate::IntEQ, a_val, b_val)
                 } else {
-                    let i8p_ty = self.type_i8p();
+                    // TODO: Get the correct address space.
+                    let i8p_ty = self.type_i8p_ext(dl.default_address_space);
                     let a_ptr = self.bitcast(a, i8p_ty);
                     let b_ptr = self.bitcast(b, i8p_ty);
                     let n = self.const_usize(layout.size().bytes());
@@ -383,7 +383,8 @@ impl<'ll, 'tcx> IntrinsicCallMethods<'tcx> for Builder<'_, 'll, 'tcx> {
 
         if !fn_abi.ret.is_ignore() {
             if let PassMode::Cast(ty, _) = &fn_abi.ret.mode {
-                let ptr_llty = self.type_ptr_to(ty.llvm_type(self));
+                // TODO: Get the correct address space from result.llval.
+                let ptr_llty = self.type_ptr_to_ext(ty.llvm_type(self), dl.default_address_space);
                 let ptr = self.pointercast(result.llval, ptr_llty);
                 self.store(llval, ptr, result.align);
             } else {
@@ -409,7 +410,8 @@ impl<'ll, 'tcx> IntrinsicCallMethods<'tcx> for Builder<'_, 'll, 'tcx> {
     fn type_test(&mut self, pointer: Self::Value, typeid: Self::Value) -> Self::Value {
         // Test the called operand using llvm.type.test intrinsic. The LowerTypeTests link-time
         // optimization pass replaces calls to this intrinsic with code to test type membership.
-        let i8p_ty = self.type_i8p();
+        // TODO: Get the correct address space.
+        let i8p_ty = self.type_i8p_ext(self.tcx.data_layout.default_address_space);
         let bitcast = self.bitcast(pointer, i8p_ty);
         self.call_intrinsic("llvm.type.test", &[bitcast, typeid])
     }
@@ -441,7 +443,11 @@ fn try_intrinsic<'ll>(
     dest: &'ll Value,
 ) {
     if bx.sess().panic_strategy() == PanicStrategy::Abort {
-        let try_func_ty = bx.type_func(&[bx.type_i8p()], bx.type_void());
+        // TODO: Get the correct address space.
+        let try_func_ty = bx.type_func(
+            &[bx.type_i8p_ext(bx.tcx().data_layout.default_address_space)],
+            bx.type_void(),
+        );
         bx.call(try_func_ty, None, try_func, &[data], None);
         // Return 0 unconditionally from the intrinsic call;
         // we can never unwind.
@@ -541,8 +547,10 @@ fn codegen_msvc_try<'ll>(
         //
         // More information can be found in libstd's seh.rs implementation.
         let ptr_align = dl.ptr_layout(Some(dl.alloca_address_space)).align.abi;
-        let slot = bx.alloca(bx.type_i8p(), ptr_align);
-        let try_func_ty = bx.type_func(&[bx.type_i8p()], bx.type_void());
+        // TODO: Get the correct address space.
+        let slot = bx.alloca(bx.type_i8p_ext(dl.default_address_space), ptr_align);
+        let try_func_ty =
+            bx.type_func(&[bx.type_i8p_ext(dl.default_address_space)], bx.type_void());
         bx.invoke(try_func_ty, None, try_func, &[data], normal, catchswitch, None);
 
         bx.switch_to_block(normal);
@@ -565,10 +573,18 @@ fn codegen_msvc_try<'ll>(
         //
         // When modifying, make sure that the type_name string exactly matches
         // the one used in src/libpanic_unwind/seh.rs.
-        let type_info_vtable = bx.declare_global("??_7type_info@@6B@", bx.type_i8p());
+        // TODO: Is this the right address space?
+        let type_info_vtable =
+            bx.declare_global("??_7type_info@@6B@", bx.type_i8p_ext(dl.globals_address_space));
         let type_name = bx.const_bytes(b"rust_panic\0");
-        let type_info =
-            bx.const_struct(&[type_info_vtable, bx.const_null(bx.type_i8p()), type_name], false);
+        let type_info = bx.const_struct(
+            &[
+                type_info_vtable,
+                bx.const_null(bx.type_i8p_ext(dl.globals_address_space)),
+                type_name,
+            ],
+            false,
+        );
         let tydesc = bx.declare_global("__rust_panic_type_info", bx.val_ty(type_info));
         unsafe {
             llvm::LLVMRustSetLinkage(tydesc, llvm::Linkage::LinkOnceODRLinkage);
@@ -585,15 +601,20 @@ fn codegen_msvc_try<'ll>(
         bx.switch_to_block(catchpad_rust);
         let flags = bx.const_i32(8);
         let funclet = bx.catch_pad(cs, &[tydesc, flags, slot]);
-        let ptr = bx.load(bx.type_i8p(), slot, ptr_align);
-        let catch_ty = bx.type_func(&[bx.type_i8p(), bx.type_i8p()], bx.type_void());
+        // TODO: Get the correct address space.
+        let ptr = bx.load(bx.type_i8p_ext(dl.default_address_space), slot, ptr_align);
+        let catch_ty = bx.type_func(
+            &[bx.type_i8p_ext(dl.default_address_space), bx.type_i8p_ext(dl.default_address_space)],
+            bx.type_void(),
+        );
         bx.call(catch_ty, None, catch_func, &[data, ptr], Some(&funclet));
         bx.catch_ret(&funclet, caught);
 
         // The flag value of 64 indicates a "catch-all".
         bx.switch_to_block(catchpad_foreign);
         let flags = bx.const_i32(64);
-        let null = bx.const_null(bx.type_i8p());
+        // TODO: Is this the right address space?
+        let null = bx.const_null(bx.type_i8p_ext(dl.globals_address_space));
         let funclet = bx.catch_pad(cs, &[null, flags, null]);
         bx.call(catch_ty, None, catch_func, &[data, null], Some(&funclet));
         bx.catch_ret(&funclet, caught);
@@ -640,13 +661,16 @@ fn codegen_gnu_try<'ll>(
         //      (%ptr, _) = landingpad
         //      call %catch_func(%data, %ptr)
         //      ret 1
+        let dl = &bx.tcx().data_layout;
         let then = bx.append_sibling_block("then");
         let catch = bx.append_sibling_block("catch");
 
         let try_func = llvm::get_param(bx.llfn(), 0);
         let data = llvm::get_param(bx.llfn(), 1);
         let catch_func = llvm::get_param(bx.llfn(), 2);
-        let try_func_ty = bx.type_func(&[bx.type_i8p()], bx.type_void());
+        // TODO: Get the correct address space.
+        let try_func_ty =
+            bx.type_func(&[bx.type_i8p_ext(dl.default_address_space)], bx.type_void());
         bx.invoke(try_func_ty, None, try_func, &[data], then, catch, None);
 
         bx.switch_to_block(then);
@@ -659,12 +683,17 @@ fn codegen_gnu_try<'ll>(
         // the landing pad clauses the exception's type had been matched to.
         // rust_try ignores the selector.
         bx.switch_to_block(catch);
-        let lpad_ty = bx.type_struct(&[bx.type_i8p(), bx.type_i32()], false);
+        let lpad_ty =
+            bx.type_struct(&[bx.type_i8p_ext(dl.globals_address_space), bx.type_i32()], false);
         let vals = bx.landing_pad(lpad_ty, bx.eh_personality(), 1);
-        let tydesc = bx.const_null(bx.type_i8p());
+        let tydesc = bx.const_null(bx.type_i8p_ext(dl.globals_address_space));
         bx.add_clause(vals, tydesc);
         let ptr = bx.extract_value(vals, 0);
-        let catch_ty = bx.type_func(&[bx.type_i8p(), bx.type_i8p()], bx.type_void());
+        // TODO: Get the correct address space.
+        let catch_ty = bx.type_func(
+            &[bx.type_i8p_ext(dl.default_address_space), bx.type_i8p_ext(dl.default_address_space)],
+            bx.type_void(),
+        );
         bx.call(catch_ty, None, catch_func, &[data, ptr], None);
         bx.ret(bx.const_i32(1));
     });
@@ -712,7 +741,12 @@ fn codegen_emcc_try<'ll>(
         let try_func = llvm::get_param(bx.llfn(), 0);
         let data = llvm::get_param(bx.llfn(), 1);
         let catch_func = llvm::get_param(bx.llfn(), 2);
-        let try_func_ty = bx.type_func(&[bx.type_i8p()], bx.type_void());
+
+        // TODO: Get the correct address space. We need to think about whether there needs to be
+        // separate functions for each different address space (IE like LLVM's intriniscs with the
+        // 'p0.i8' vs 'p200.i8' suffix).
+        let try_func_ty =
+            bx.type_func(&[bx.type_i8p_ext(dl.default_address_space)], bx.type_void());
         bx.invoke(try_func_ty, None, try_func, &[data], then, catch, None);
 
         bx.switch_to_block(then);
@@ -725,10 +759,13 @@ fn codegen_emcc_try<'ll>(
         // the landing pad clauses the exception's type had been matched to.
         bx.switch_to_block(catch);
         let tydesc = bx.eh_catch_typeinfo();
-        let lpad_ty = bx.type_struct(&[bx.type_i8p(), bx.type_i32()], false);
+        // TODO: Get the correct address space.
+        let lpad_ty =
+            bx.type_struct(&[bx.type_i8p_ext(dl.default_address_space), bx.type_i32()], false);
         let vals = bx.landing_pad(lpad_ty, bx.eh_personality(), 2);
         bx.add_clause(vals, tydesc);
-        bx.add_clause(vals, bx.const_null(bx.type_i8p()));
+        // TODO: Get the correct address space.
+        bx.add_clause(vals, bx.const_null(bx.type_i8p_ext(dl.default_address_space)));
         let ptr = bx.extract_value(vals, 0);
         let selector = bx.extract_value(vals, 1);
 
@@ -741,7 +778,9 @@ fn codegen_emcc_try<'ll>(
         // create an alloca and pass a pointer to that.
         let ptr_align = dl.ptr_layout(Some(dl.alloca_address_space)).align.abi;
         let i8_align = dl.i8_align.abi;
-        let catch_data_type = bx.type_struct(&[bx.type_i8p(), bx.type_bool()], false);
+        // TODO: Get the correct address space.
+        let catch_data_type =
+            bx.type_struct(&[bx.type_i8p_ext(dl.default_address_space), bx.type_bool()], false);
         let catch_data = bx.alloca(catch_data_type, ptr_align);
         let catch_data_0 =
             bx.inbounds_gep(catch_data_type, catch_data, &[bx.const_usize(0), bx.const_usize(0)]);
@@ -749,9 +788,14 @@ fn codegen_emcc_try<'ll>(
         let catch_data_1 =
             bx.inbounds_gep(catch_data_type, catch_data, &[bx.const_usize(0), bx.const_usize(1)]);
         bx.store(is_rust_panic, catch_data_1, i8_align);
-        let catch_data = bx.bitcast(catch_data, bx.type_i8p());
+        // TODO: Get the correct address space.
+        let catch_data = bx.bitcast(catch_data, bx.type_i8p_ext(dl.default_address_space));
 
-        let catch_ty = bx.type_func(&[bx.type_i8p(), bx.type_i8p()], bx.type_void());
+        // TODO: Get the correct address space.
+        let catch_ty = bx.type_func(
+            &[bx.type_i8p_ext(dl.default_address_space), bx.type_i8p_ext(dl.default_address_space)],
+            bx.type_void(),
+        );
         bx.call(catch_ty, None, catch_func, &[data, catch_data], None);
         bx.ret(bx.const_i32(1));
     });
@@ -875,6 +919,7 @@ fn generic_simd_intrinsic<'ll, 'tcx>(
     }
 
     let tcx = bx.tcx();
+    let dl = &tcx.data_layout;
     let sig =
         tcx.normalize_erasing_late_bound_regions(ty::ParamEnv::reveal_all(), callee_ty.fn_sig(tcx));
     let arg_tys = sig.inputs();
@@ -898,7 +943,10 @@ fn generic_simd_intrinsic<'ll, 'tcx>(
                 let place = PlaceRef::alloca(bx, args[0].layout);
                 args[0].val.store(bx, place);
                 let int_ty = bx.type_ix(expected_bytes * 8);
-                let ptr = bx.pointercast(place.llval, bx.cx.type_ptr_to(int_ty));
+                let ptr = bx.pointercast(
+                    place.llval,
+                    bx.cx.type_ptr_to_ext(int_ty, dl.alloca_address_space),
+                );
                 bx.load(int_ty, ptr, Align::ONE)
             }
             _ => return_error!(
@@ -1148,7 +1196,8 @@ fn generic_simd_intrinsic<'ll, 'tcx>(
                 let ptr = bx.alloca(bx.type_ix(expected_bytes * 8), Align::ONE);
                 bx.store(ze, ptr, Align::ONE);
                 let array_ty = bx.type_array(bx.type_i8(), expected_bytes);
-                let ptr = bx.pointercast(ptr, bx.cx.type_ptr_to(array_ty));
+                let ptr =
+                    bx.pointercast(ptr, bx.cx.type_ptr_to_ext(array_ty, dl.alloca_address_space));
                 return Ok(bx.load(array_ty, ptr, Align::ONE));
             }
             _ => return_error!(
@@ -1306,7 +1355,8 @@ fn generic_simd_intrinsic<'ll, 'tcx>(
             _ => unreachable!(),
         };
         while no_pointers > 0 {
-            elem_ty = cx.type_ptr_to(elem_ty);
+            // TODO: Get the correct address space.
+            elem_ty = cx.type_ptr_to_ext(elem_ty, cx.tcx().data_layout.default_address_space);
             no_pointers -= 1;
         }
         cx.type_vector(elem_ty, vec_len)

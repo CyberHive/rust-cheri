@@ -852,10 +852,12 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         flags: MemFlags,
     ) {
         assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal memcpy not supported");
+        let dl = &self.tcx.data_layout;
         let size = self.intcast(size, self.type_isize(), false);
         let is_volatile = flags.contains(MemFlags::VOLATILE);
-        let dst = self.pointercast(dst, self.type_i8p());
-        let src = self.pointercast(src, self.type_i8p());
+        // TODO: Get correct address space. Should come from the original pointers.
+        let dst = self.pointercast(dst, self.type_i8p_ext(dl.default_address_space));
+        let src = self.pointercast(src, self.type_i8p_ext(dl.default_address_space));
         unsafe {
             llvm::LLVMRustBuildMemCpy(
                 self.llbuilder,
@@ -879,10 +881,12 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         flags: MemFlags,
     ) {
         assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal memmove not supported");
+        let dl = &self.tcx.data_layout;
         let size = self.intcast(size, self.type_isize(), false);
         let is_volatile = flags.contains(MemFlags::VOLATILE);
-        let dst = self.pointercast(dst, self.type_i8p());
-        let src = self.pointercast(src, self.type_i8p());
+        // TODO: Get correct address space. Should come from the original pointers.
+        let dst = self.pointercast(dst, self.type_i8p_ext(dl.default_address_space));
+        let src = self.pointercast(src, self.type_i8p_ext(dl.default_address_space));
         unsafe {
             llvm::LLVMRustBuildMemMove(
                 self.llbuilder,
@@ -905,7 +909,9 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         flags: MemFlags,
     ) {
         let is_volatile = flags.contains(MemFlags::VOLATILE);
-        let ptr = self.pointercast(ptr, self.type_i8p());
+        // TODO: Get correct address space. Should come from the original pointer.
+        let ptr =
+            self.pointercast(ptr, self.type_i8p_ext(self.tcx.data_layout.default_address_space));
         unsafe {
             llvm::LLVMRustBuildMemSet(
                 self.llbuilder,
@@ -1129,8 +1135,14 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         );
 
         let llfn = unsafe { llvm::LLVMRustGetInstrProfIncrementIntrinsic(self.cx().llmod) };
+        // TODO: Get the correct address space.
         let llty = self.cx.type_func(
-            &[self.cx.type_i8p(), self.cx.type_i64(), self.cx.type_i32(), self.cx.type_i32()],
+            &[
+                self.cx.type_i8p_ext(self.tcx.data_layout.default_address_space),
+                self.cx.type_i64(),
+                self.cx.type_i32(),
+                self.cx.type_i32(),
+            ],
             self.cx.type_void(),
         );
         let args = &[fn_name, hash, num_counters, index];
@@ -1343,7 +1355,9 @@ impl<'a, 'll, 'tcx> Builder<'a, 'll, 'tcx> {
     fn check_store(&mut self, val: &'ll Value, ptr: &'ll Value) -> &'ll Value {
         let dest_ptr_ty = self.cx.val_ty(ptr);
         let stored_ty = self.cx.val_ty(val);
-        let stored_ptr_ty = self.cx.type_ptr_to(stored_ty);
+        // TODO: Get correct address space from dest_ptr_ty.
+        let stored_ptr_ty =
+            self.cx.type_ptr_to_ext(stored_ty, self.tcx.data_layout.default_address_space);
 
         assert_eq!(self.cx.type_kind(dest_ptr_ty), TypeKind::Pointer);
 
@@ -1421,7 +1435,9 @@ impl<'a, 'll, 'tcx> Builder<'a, 'll, 'tcx> {
             return;
         }
 
-        let ptr = self.pointercast(ptr, self.cx.type_i8p());
+        // TODO: Get the correct address space. Should get it from the original pointer.
+        let ptr =
+            self.pointercast(ptr, self.cx.type_i8p_ext(self.tcx.data_layout.default_address_space));
         self.call_intrinsic(intrinsic, &[self.cx.const_u64(size), ptr]);
     }
 

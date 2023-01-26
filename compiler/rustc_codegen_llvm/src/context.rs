@@ -101,7 +101,7 @@ pub struct CodegenCx<'ll, 'tcx> {
     eh_catch_typeinfo: Cell<Option<&'ll Value>>,
     pub rust_try_fn: Cell<Option<(&'ll Type, &'ll Value)>>,
 
-    intrinsics: RefCell<FxHashMap<&'static str, (&'ll Type, &'ll Value)>>,
+    intrinsics: RefCell<FxHashMap<String, (&'ll Type, &'ll Value)>>,
 
     /// A counter that is used for generating local symbol names
     local_gen_sym_counter: Cell<usize>,
@@ -461,7 +461,11 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
 
     pub(crate) fn create_used_variable_impl(&self, name: &'static CStr, values: &[&'ll Value]) {
         let section = cstr!("llvm.metadata");
-        let array = self.const_array(self.type_ptr_to(self.type_i8()), values);
+        // TODO: Pretty sure the address space is global.
+        let array = self.const_array(
+            self.type_ptr_to_ext(self.type_i8(), self.tcx.data_layout.globals_address_space),
+            values,
+        );
 
         unsafe {
             let g = llvm::LLVMAddGlobal(self.llmod, self.val_ty(array), name.as_ptr());
@@ -593,7 +597,7 @@ impl<'ll> CodegenCx<'ll, '_> {
 
     fn insert_intrinsic(
         &self,
-        name: &'static str,
+        name: String,
         args: Option<&[&'ll llvm::Type]>,
         ret: &'ll llvm::Type,
     ) -> (&'ll llvm::Type, &'ll llvm::Value) {
@@ -602,7 +606,7 @@ impl<'ll> CodegenCx<'ll, '_> {
         } else {
             self.type_variadic_func(&[], ret)
         };
-        let f = self.declare_cfn(name, llvm::UnnamedAddr::No, fn_ty);
+        let f = self.declare_cfn(name.as_str(), llvm::UnnamedAddr::No, fn_ty);
         self.intrinsics.borrow_mut().insert(name, (fn_ty, f));
         (fn_ty, f)
     }
@@ -629,7 +633,14 @@ impl<'ll> CodegenCx<'ll, '_> {
             ($($field_ty:expr),*) => (self.type_struct( &[$($field_ty),*], false))
         }
 
-        let i8p = self.type_i8p();
+        let dl = &self.tcx.data_layout;
+
+        // Different types for all different address spaces.
+        let i8p_types =
+            &(dl.pointer_layouts.iter().map(|e| (e.0, self.type_i8p_ext(e.0))).collect::<Vec<_>>());
+        let i8p_i = self.type_i8p_ext(dl.instruction_address_space);
+        let i8p_a = self.type_i8p_ext(dl.alloca_address_space);
+
         let void = self.type_void();
         let i1 = self.type_i1();
         let t_i8 = self.type_i8();
@@ -642,244 +653,332 @@ impl<'ll> CodegenCx<'ll, '_> {
         let t_f64 = self.type_f64();
         let t_metadata = self.type_metadata();
 
-        ifn!("llvm.wasm.trunc.unsigned.i32.f32", fn(t_f32) -> t_i32);
-        ifn!("llvm.wasm.trunc.unsigned.i32.f64", fn(t_f64) -> t_i32);
-        ifn!("llvm.wasm.trunc.unsigned.i64.f32", fn(t_f32) -> t_i64);
-        ifn!("llvm.wasm.trunc.unsigned.i64.f64", fn(t_f64) -> t_i64);
-        ifn!("llvm.wasm.trunc.signed.i32.f32", fn(t_f32) -> t_i32);
-        ifn!("llvm.wasm.trunc.signed.i32.f64", fn(t_f64) -> t_i32);
-        ifn!("llvm.wasm.trunc.signed.i64.f32", fn(t_f32) -> t_i64);
-        ifn!("llvm.wasm.trunc.signed.i64.f64", fn(t_f64) -> t_i64);
+        ifn!("llvm.wasm.trunc.unsigned.i32.f32".to_string(), fn(t_f32) -> t_i32);
+        ifn!("llvm.wasm.trunc.unsigned.i32.f64".to_string(), fn(t_f64) -> t_i32);
+        ifn!("llvm.wasm.trunc.unsigned.i64.f32".to_string(), fn(t_f32) -> t_i64);
+        ifn!("llvm.wasm.trunc.unsigned.i64.f64".to_string(), fn(t_f64) -> t_i64);
+        ifn!("llvm.wasm.trunc.signed.i32.f32".to_string(), fn(t_f32) -> t_i32);
+        ifn!("llvm.wasm.trunc.signed.i32.f64".to_string(), fn(t_f64) -> t_i32);
+        ifn!("llvm.wasm.trunc.signed.i64.f32".to_string(), fn(t_f32) -> t_i64);
+        ifn!("llvm.wasm.trunc.signed.i64.f64".to_string(), fn(t_f64) -> t_i64);
 
-        ifn!("llvm.fptosi.sat.i8.f32", fn(t_f32) -> t_i8);
-        ifn!("llvm.fptosi.sat.i16.f32", fn(t_f32) -> t_i16);
-        ifn!("llvm.fptosi.sat.i32.f32", fn(t_f32) -> t_i32);
-        ifn!("llvm.fptosi.sat.i64.f32", fn(t_f32) -> t_i64);
-        ifn!("llvm.fptosi.sat.i128.f32", fn(t_f32) -> t_i128);
-        ifn!("llvm.fptosi.sat.i8.f64", fn(t_f64) -> t_i8);
-        ifn!("llvm.fptosi.sat.i16.f64", fn(t_f64) -> t_i16);
-        ifn!("llvm.fptosi.sat.i32.f64", fn(t_f64) -> t_i32);
-        ifn!("llvm.fptosi.sat.i64.f64", fn(t_f64) -> t_i64);
-        ifn!("llvm.fptosi.sat.i128.f64", fn(t_f64) -> t_i128);
+        ifn!("llvm.fptosi.sat.i8.f32".to_string(), fn(t_f32) -> t_i8);
+        ifn!("llvm.fptosi.sat.i16.f32".to_string(), fn(t_f32) -> t_i16);
+        ifn!("llvm.fptosi.sat.i32.f32".to_string(), fn(t_f32) -> t_i32);
+        ifn!("llvm.fptosi.sat.i64.f32".to_string(), fn(t_f32) -> t_i64);
+        ifn!("llvm.fptosi.sat.i128.f32".to_string(), fn(t_f32) -> t_i128);
+        ifn!("llvm.fptosi.sat.i8.f64".to_string(), fn(t_f64) -> t_i8);
+        ifn!("llvm.fptosi.sat.i16.f64".to_string(), fn(t_f64) -> t_i16);
+        ifn!("llvm.fptosi.sat.i32.f64".to_string(), fn(t_f64) -> t_i32);
+        ifn!("llvm.fptosi.sat.i64.f64".to_string(), fn(t_f64) -> t_i64);
+        ifn!("llvm.fptosi.sat.i128.f64".to_string(), fn(t_f64) -> t_i128);
 
-        ifn!("llvm.fptoui.sat.i8.f32", fn(t_f32) -> t_i8);
-        ifn!("llvm.fptoui.sat.i16.f32", fn(t_f32) -> t_i16);
-        ifn!("llvm.fptoui.sat.i32.f32", fn(t_f32) -> t_i32);
-        ifn!("llvm.fptoui.sat.i64.f32", fn(t_f32) -> t_i64);
-        ifn!("llvm.fptoui.sat.i128.f32", fn(t_f32) -> t_i128);
-        ifn!("llvm.fptoui.sat.i8.f64", fn(t_f64) -> t_i8);
-        ifn!("llvm.fptoui.sat.i16.f64", fn(t_f64) -> t_i16);
-        ifn!("llvm.fptoui.sat.i32.f64", fn(t_f64) -> t_i32);
-        ifn!("llvm.fptoui.sat.i64.f64", fn(t_f64) -> t_i64);
-        ifn!("llvm.fptoui.sat.i128.f64", fn(t_f64) -> t_i128);
+        ifn!("llvm.fptoui.sat.i8.f32".to_string(), fn(t_f32) -> t_i8);
+        ifn!("llvm.fptoui.sat.i16.f32".to_string(), fn(t_f32) -> t_i16);
+        ifn!("llvm.fptoui.sat.i32.f32".to_string(), fn(t_f32) -> t_i32);
+        ifn!("llvm.fptoui.sat.i64.f32".to_string(), fn(t_f32) -> t_i64);
+        ifn!("llvm.fptoui.sat.i128.f32".to_string(), fn(t_f32) -> t_i128);
+        ifn!("llvm.fptoui.sat.i8.f64".to_string(), fn(t_f64) -> t_i8);
+        ifn!("llvm.fptoui.sat.i16.f64".to_string(), fn(t_f64) -> t_i16);
+        ifn!("llvm.fptoui.sat.i32.f64".to_string(), fn(t_f64) -> t_i32);
+        ifn!("llvm.fptoui.sat.i64.f64".to_string(), fn(t_f64) -> t_i64);
+        ifn!("llvm.fptoui.sat.i128.f64".to_string(), fn(t_f64) -> t_i128);
 
-        ifn!("llvm.trap", fn() -> void);
-        ifn!("llvm.debugtrap", fn() -> void);
-        ifn!("llvm.frameaddress", fn(t_i32) -> i8p);
+        ifn!("llvm.trap".to_string(), fn() -> void);
+        ifn!("llvm.debugtrap".to_string(), fn() -> void);
+        for t in i8p_types {
+            if t.0 == AddressSpace(0) {
+                ifn!("llvm.frameaddress".to_string(), fn(t_i32) -> t.1);
+            }
+            ifn!(format!("llvm.frameaddress.p{:?}i8", t.0.0), fn(t_i32) -> t.1);
+        }
 
-        ifn!("llvm.powi.f32", fn(t_f32, t_i32) -> t_f32);
-        ifn!("llvm.powi.f64", fn(t_f64, t_i32) -> t_f64);
+        ifn!("llvm.powi.f32".to_string(), fn(t_f32, t_i32) -> t_f32);
+        ifn!("llvm.powi.f64".to_string(), fn(t_f64, t_i32) -> t_f64);
 
-        ifn!("llvm.pow.f32", fn(t_f32, t_f32) -> t_f32);
-        ifn!("llvm.pow.f64", fn(t_f64, t_f64) -> t_f64);
+        ifn!("llvm.pow.f32".to_string(), fn(t_f32, t_f32) -> t_f32);
+        ifn!("llvm.pow.f64".to_string(), fn(t_f64, t_f64) -> t_f64);
 
-        ifn!("llvm.sqrt.f32", fn(t_f32) -> t_f32);
-        ifn!("llvm.sqrt.f64", fn(t_f64) -> t_f64);
+        ifn!("llvm.sqrt.f32".to_string(), fn(t_f32) -> t_f32);
+        ifn!("llvm.sqrt.f64".to_string(), fn(t_f64) -> t_f64);
 
-        ifn!("llvm.sin.f32", fn(t_f32) -> t_f32);
-        ifn!("llvm.sin.f64", fn(t_f64) -> t_f64);
+        ifn!("llvm.sin.f32".to_string(), fn(t_f32) -> t_f32);
+        ifn!("llvm.sin.f64".to_string(), fn(t_f64) -> t_f64);
 
-        ifn!("llvm.cos.f32", fn(t_f32) -> t_f32);
-        ifn!("llvm.cos.f64", fn(t_f64) -> t_f64);
+        ifn!("llvm.cos.f32".to_string(), fn(t_f32) -> t_f32);
+        ifn!("llvm.cos.f64".to_string(), fn(t_f64) -> t_f64);
 
-        ifn!("llvm.exp.f32", fn(t_f32) -> t_f32);
-        ifn!("llvm.exp.f64", fn(t_f64) -> t_f64);
+        ifn!("llvm.exp.f32".to_string(), fn(t_f32) -> t_f32);
+        ifn!("llvm.exp.f64".to_string(), fn(t_f64) -> t_f64);
 
-        ifn!("llvm.exp2.f32", fn(t_f32) -> t_f32);
-        ifn!("llvm.exp2.f64", fn(t_f64) -> t_f64);
+        ifn!("llvm.exp2.f32".to_string(), fn(t_f32) -> t_f32);
+        ifn!("llvm.exp2.f64".to_string(), fn(t_f64) -> t_f64);
 
-        ifn!("llvm.log.f32", fn(t_f32) -> t_f32);
-        ifn!("llvm.log.f64", fn(t_f64) -> t_f64);
+        ifn!("llvm.log.f32".to_string(), fn(t_f32) -> t_f32);
+        ifn!("llvm.log.f64".to_string(), fn(t_f64) -> t_f64);
 
-        ifn!("llvm.log10.f32", fn(t_f32) -> t_f32);
-        ifn!("llvm.log10.f64", fn(t_f64) -> t_f64);
+        ifn!("llvm.log10.f32".to_string(), fn(t_f32) -> t_f32);
+        ifn!("llvm.log10.f64".to_string(), fn(t_f64) -> t_f64);
 
-        ifn!("llvm.log2.f32", fn(t_f32) -> t_f32);
-        ifn!("llvm.log2.f64", fn(t_f64) -> t_f64);
+        ifn!("llvm.log2.f32".to_string(), fn(t_f32) -> t_f32);
+        ifn!("llvm.log2.f64".to_string(), fn(t_f64) -> t_f64);
 
-        ifn!("llvm.fma.f32", fn(t_f32, t_f32, t_f32) -> t_f32);
-        ifn!("llvm.fma.f64", fn(t_f64, t_f64, t_f64) -> t_f64);
+        ifn!("llvm.fma.f32".to_string(), fn(t_f32, t_f32, t_f32) -> t_f32);
+        ifn!("llvm.fma.f64".to_string(), fn(t_f64, t_f64, t_f64) -> t_f64);
 
-        ifn!("llvm.fabs.f32", fn(t_f32) -> t_f32);
-        ifn!("llvm.fabs.f64", fn(t_f64) -> t_f64);
+        ifn!("llvm.fabs.f32".to_string(), fn(t_f32) -> t_f32);
+        ifn!("llvm.fabs.f64".to_string(), fn(t_f64) -> t_f64);
 
-        ifn!("llvm.minnum.f32", fn(t_f32, t_f32) -> t_f32);
-        ifn!("llvm.minnum.f64", fn(t_f64, t_f64) -> t_f64);
-        ifn!("llvm.maxnum.f32", fn(t_f32, t_f32) -> t_f32);
-        ifn!("llvm.maxnum.f64", fn(t_f64, t_f64) -> t_f64);
+        ifn!("llvm.minnum.f32".to_string(), fn(t_f32, t_f32) -> t_f32);
+        ifn!("llvm.minnum.f64".to_string(), fn(t_f64, t_f64) -> t_f64);
+        ifn!("llvm.maxnum.f32".to_string(), fn(t_f32, t_f32) -> t_f32);
+        ifn!("llvm.maxnum.f64".to_string(), fn(t_f64, t_f64) -> t_f64);
 
-        ifn!("llvm.floor.f32", fn(t_f32) -> t_f32);
-        ifn!("llvm.floor.f64", fn(t_f64) -> t_f64);
+        ifn!("llvm.floor.f32".to_string(), fn(t_f32) -> t_f32);
+        ifn!("llvm.floor.f64".to_string(), fn(t_f64) -> t_f64);
 
-        ifn!("llvm.ceil.f32", fn(t_f32) -> t_f32);
-        ifn!("llvm.ceil.f64", fn(t_f64) -> t_f64);
+        ifn!("llvm.ceil.f32".to_string(), fn(t_f32) -> t_f32);
+        ifn!("llvm.ceil.f64".to_string(), fn(t_f64) -> t_f64);
 
-        ifn!("llvm.trunc.f32", fn(t_f32) -> t_f32);
-        ifn!("llvm.trunc.f64", fn(t_f64) -> t_f64);
+        ifn!("llvm.trunc.f32".to_string(), fn(t_f32) -> t_f32);
+        ifn!("llvm.trunc.f64".to_string(), fn(t_f64) -> t_f64);
 
-        ifn!("llvm.copysign.f32", fn(t_f32, t_f32) -> t_f32);
-        ifn!("llvm.copysign.f64", fn(t_f64, t_f64) -> t_f64);
-        ifn!("llvm.round.f32", fn(t_f32) -> t_f32);
-        ifn!("llvm.round.f64", fn(t_f64) -> t_f64);
+        ifn!("llvm.copysign.f32".to_string(), fn(t_f32, t_f32) -> t_f32);
+        ifn!("llvm.copysign.f64".to_string(), fn(t_f64, t_f64) -> t_f64);
+        ifn!("llvm.round.f32".to_string(), fn(t_f32) -> t_f32);
+        ifn!("llvm.round.f64".to_string(), fn(t_f64) -> t_f64);
 
-        ifn!("llvm.rint.f32", fn(t_f32) -> t_f32);
-        ifn!("llvm.rint.f64", fn(t_f64) -> t_f64);
-        ifn!("llvm.nearbyint.f32", fn(t_f32) -> t_f32);
-        ifn!("llvm.nearbyint.f64", fn(t_f64) -> t_f64);
+        ifn!("llvm.rint.f32".to_string(), fn(t_f32) -> t_f32);
+        ifn!("llvm.rint.f64".to_string(), fn(t_f64) -> t_f64);
+        ifn!("llvm.nearbyint.f32".to_string(), fn(t_f32) -> t_f32);
+        ifn!("llvm.nearbyint.f64".to_string(), fn(t_f64) -> t_f64);
 
-        ifn!("llvm.ctpop.i8", fn(t_i8) -> t_i8);
-        ifn!("llvm.ctpop.i16", fn(t_i16) -> t_i16);
-        ifn!("llvm.ctpop.i32", fn(t_i32) -> t_i32);
-        ifn!("llvm.ctpop.i64", fn(t_i64) -> t_i64);
-        ifn!("llvm.ctpop.i128", fn(t_i128) -> t_i128);
+        ifn!("llvm.ctpop.i8".to_string(), fn(t_i8) -> t_i8);
+        ifn!("llvm.ctpop.i16".to_string(), fn(t_i16) -> t_i16);
+        ifn!("llvm.ctpop.i32".to_string(), fn(t_i32) -> t_i32);
+        ifn!("llvm.ctpop.i64".to_string(), fn(t_i64) -> t_i64);
+        ifn!("llvm.ctpop.i128".to_string(), fn(t_i128) -> t_i128);
 
-        ifn!("llvm.ctlz.i8", fn(t_i8, i1) -> t_i8);
-        ifn!("llvm.ctlz.i16", fn(t_i16, i1) -> t_i16);
-        ifn!("llvm.ctlz.i32", fn(t_i32, i1) -> t_i32);
-        ifn!("llvm.ctlz.i64", fn(t_i64, i1) -> t_i64);
-        ifn!("llvm.ctlz.i128", fn(t_i128, i1) -> t_i128);
+        ifn!("llvm.ctlz.i8".to_string(), fn(t_i8, i1) -> t_i8);
+        ifn!("llvm.ctlz.i16".to_string(), fn(t_i16, i1) -> t_i16);
+        ifn!("llvm.ctlz.i32".to_string(), fn(t_i32, i1) -> t_i32);
+        ifn!("llvm.ctlz.i64".to_string(), fn(t_i64, i1) -> t_i64);
+        ifn!("llvm.ctlz.i128".to_string(), fn(t_i128, i1) -> t_i128);
 
-        ifn!("llvm.cttz.i8", fn(t_i8, i1) -> t_i8);
-        ifn!("llvm.cttz.i16", fn(t_i16, i1) -> t_i16);
-        ifn!("llvm.cttz.i32", fn(t_i32, i1) -> t_i32);
-        ifn!("llvm.cttz.i64", fn(t_i64, i1) -> t_i64);
-        ifn!("llvm.cttz.i128", fn(t_i128, i1) -> t_i128);
+        ifn!("llvm.cttz.i8".to_string(), fn(t_i8, i1) -> t_i8);
+        ifn!("llvm.cttz.i16".to_string(), fn(t_i16, i1) -> t_i16);
+        ifn!("llvm.cttz.i32".to_string(), fn(t_i32, i1) -> t_i32);
+        ifn!("llvm.cttz.i64".to_string(), fn(t_i64, i1) -> t_i64);
+        ifn!("llvm.cttz.i128".to_string(), fn(t_i128, i1) -> t_i128);
 
-        ifn!("llvm.bswap.i16", fn(t_i16) -> t_i16);
-        ifn!("llvm.bswap.i32", fn(t_i32) -> t_i32);
-        ifn!("llvm.bswap.i64", fn(t_i64) -> t_i64);
-        ifn!("llvm.bswap.i128", fn(t_i128) -> t_i128);
+        ifn!("llvm.bswap.i16".to_string(), fn(t_i16) -> t_i16);
+        ifn!("llvm.bswap.i32".to_string(), fn(t_i32) -> t_i32);
+        ifn!("llvm.bswap.i64".to_string(), fn(t_i64) -> t_i64);
+        ifn!("llvm.bswap.i128".to_string(), fn(t_i128) -> t_i128);
 
-        ifn!("llvm.bitreverse.i8", fn(t_i8) -> t_i8);
-        ifn!("llvm.bitreverse.i16", fn(t_i16) -> t_i16);
-        ifn!("llvm.bitreverse.i32", fn(t_i32) -> t_i32);
-        ifn!("llvm.bitreverse.i64", fn(t_i64) -> t_i64);
-        ifn!("llvm.bitreverse.i128", fn(t_i128) -> t_i128);
+        ifn!("llvm.bitreverse.i8".to_string(), fn(t_i8) -> t_i8);
+        ifn!("llvm.bitreverse.i16".to_string(), fn(t_i16) -> t_i16);
+        ifn!("llvm.bitreverse.i32".to_string(), fn(t_i32) -> t_i32);
+        ifn!("llvm.bitreverse.i64".to_string(), fn(t_i64) -> t_i64);
+        ifn!("llvm.bitreverse.i128".to_string(), fn(t_i128) -> t_i128);
 
-        ifn!("llvm.fshl.i8", fn(t_i8, t_i8, t_i8) -> t_i8);
-        ifn!("llvm.fshl.i16", fn(t_i16, t_i16, t_i16) -> t_i16);
-        ifn!("llvm.fshl.i32", fn(t_i32, t_i32, t_i32) -> t_i32);
-        ifn!("llvm.fshl.i64", fn(t_i64, t_i64, t_i64) -> t_i64);
-        ifn!("llvm.fshl.i128", fn(t_i128, t_i128, t_i128) -> t_i128);
+        ifn!("llvm.fshl.i8".to_string(), fn(t_i8, t_i8, t_i8) -> t_i8);
+        ifn!("llvm.fshl.i16".to_string(), fn(t_i16, t_i16, t_i16) -> t_i16);
+        ifn!("llvm.fshl.i32".to_string(), fn(t_i32, t_i32, t_i32) -> t_i32);
+        ifn!("llvm.fshl.i64".to_string(), fn(t_i64, t_i64, t_i64) -> t_i64);
+        ifn!("llvm.fshl.i128".to_string(), fn(t_i128, t_i128, t_i128) -> t_i128);
 
-        ifn!("llvm.fshr.i8", fn(t_i8, t_i8, t_i8) -> t_i8);
-        ifn!("llvm.fshr.i16", fn(t_i16, t_i16, t_i16) -> t_i16);
-        ifn!("llvm.fshr.i32", fn(t_i32, t_i32, t_i32) -> t_i32);
-        ifn!("llvm.fshr.i64", fn(t_i64, t_i64, t_i64) -> t_i64);
-        ifn!("llvm.fshr.i128", fn(t_i128, t_i128, t_i128) -> t_i128);
+        ifn!("llvm.fshr.i8".to_string(), fn(t_i8, t_i8, t_i8) -> t_i8);
+        ifn!("llvm.fshr.i16".to_string(), fn(t_i16, t_i16, t_i16) -> t_i16);
+        ifn!("llvm.fshr.i32".to_string(), fn(t_i32, t_i32, t_i32) -> t_i32);
+        ifn!("llvm.fshr.i64".to_string(), fn(t_i64, t_i64, t_i64) -> t_i64);
+        ifn!("llvm.fshr.i128".to_string(), fn(t_i128, t_i128, t_i128) -> t_i128);
 
-        ifn!("llvm.sadd.with.overflow.i8", fn(t_i8, t_i8) -> mk_struct! {t_i8, i1});
-        ifn!("llvm.sadd.with.overflow.i16", fn(t_i16, t_i16) -> mk_struct! {t_i16, i1});
-        ifn!("llvm.sadd.with.overflow.i32", fn(t_i32, t_i32) -> mk_struct! {t_i32, i1});
-        ifn!("llvm.sadd.with.overflow.i64", fn(t_i64, t_i64) -> mk_struct! {t_i64, i1});
-        ifn!("llvm.sadd.with.overflow.i128", fn(t_i128, t_i128) -> mk_struct! {t_i128, i1});
+        ifn!("llvm.sadd.with.overflow.i8".to_string(), fn(t_i8, t_i8) -> mk_struct! {t_i8, i1});
+        ifn!("llvm.sadd.with.overflow.i16".to_string(), fn(t_i16, t_i16) -> mk_struct! {t_i16, i1});
+        ifn!("llvm.sadd.with.overflow.i32".to_string(), fn(t_i32, t_i32) -> mk_struct! {t_i32, i1});
+        ifn!("llvm.sadd.with.overflow.i64".to_string(), fn(t_i64, t_i64) -> mk_struct! {t_i64, i1});
+        ifn!(
+            "llvm.sadd.with.overflow.i128".to_string(),
+            fn(t_i128, t_i128) -> mk_struct! {t_i128, i1}
+        );
 
-        ifn!("llvm.uadd.with.overflow.i8", fn(t_i8, t_i8) -> mk_struct! {t_i8, i1});
-        ifn!("llvm.uadd.with.overflow.i16", fn(t_i16, t_i16) -> mk_struct! {t_i16, i1});
-        ifn!("llvm.uadd.with.overflow.i32", fn(t_i32, t_i32) -> mk_struct! {t_i32, i1});
-        ifn!("llvm.uadd.with.overflow.i64", fn(t_i64, t_i64) -> mk_struct! {t_i64, i1});
-        ifn!("llvm.uadd.with.overflow.i128", fn(t_i128, t_i128) -> mk_struct! {t_i128, i1});
+        ifn!("llvm.uadd.with.overflow.i8".to_string(), fn(t_i8, t_i8) -> mk_struct! {t_i8, i1});
+        ifn!("llvm.uadd.with.overflow.i16".to_string(), fn(t_i16, t_i16) -> mk_struct! {t_i16, i1});
+        ifn!("llvm.uadd.with.overflow.i32".to_string(), fn(t_i32, t_i32) -> mk_struct! {t_i32, i1});
+        ifn!("llvm.uadd.with.overflow.i64".to_string(), fn(t_i64, t_i64) -> mk_struct! {t_i64, i1});
+        ifn!(
+            "llvm.uadd.with.overflow.i128".to_string(),
+            fn(t_i128, t_i128) -> mk_struct! {t_i128, i1}
+        );
 
-        ifn!("llvm.ssub.with.overflow.i8", fn(t_i8, t_i8) -> mk_struct! {t_i8, i1});
-        ifn!("llvm.ssub.with.overflow.i16", fn(t_i16, t_i16) -> mk_struct! {t_i16, i1});
-        ifn!("llvm.ssub.with.overflow.i32", fn(t_i32, t_i32) -> mk_struct! {t_i32, i1});
-        ifn!("llvm.ssub.with.overflow.i64", fn(t_i64, t_i64) -> mk_struct! {t_i64, i1});
-        ifn!("llvm.ssub.with.overflow.i128", fn(t_i128, t_i128) -> mk_struct! {t_i128, i1});
+        ifn!("llvm.ssub.with.overflow.i8".to_string(), fn(t_i8, t_i8) -> mk_struct! {t_i8, i1});
+        ifn!("llvm.ssub.with.overflow.i16".to_string(), fn(t_i16, t_i16) -> mk_struct! {t_i16, i1});
+        ifn!("llvm.ssub.with.overflow.i32".to_string(), fn(t_i32, t_i32) -> mk_struct! {t_i32, i1});
+        ifn!("llvm.ssub.with.overflow.i64".to_string(), fn(t_i64, t_i64) -> mk_struct! {t_i64, i1});
+        ifn!(
+            "llvm.ssub.with.overflow.i128".to_string(),
+            fn(t_i128, t_i128) -> mk_struct! {t_i128, i1}
+        );
 
-        ifn!("llvm.usub.with.overflow.i8", fn(t_i8, t_i8) -> mk_struct! {t_i8, i1});
-        ifn!("llvm.usub.with.overflow.i16", fn(t_i16, t_i16) -> mk_struct! {t_i16, i1});
-        ifn!("llvm.usub.with.overflow.i32", fn(t_i32, t_i32) -> mk_struct! {t_i32, i1});
-        ifn!("llvm.usub.with.overflow.i64", fn(t_i64, t_i64) -> mk_struct! {t_i64, i1});
-        ifn!("llvm.usub.with.overflow.i128", fn(t_i128, t_i128) -> mk_struct! {t_i128, i1});
+        ifn!("llvm.usub.with.overflow.i8".to_string(), fn(t_i8, t_i8) -> mk_struct! {t_i8, i1});
+        ifn!("llvm.usub.with.overflow.i16".to_string(), fn(t_i16, t_i16) -> mk_struct! {t_i16, i1});
+        ifn!("llvm.usub.with.overflow.i32".to_string(), fn(t_i32, t_i32) -> mk_struct! {t_i32, i1});
+        ifn!("llvm.usub.with.overflow.i64".to_string(), fn(t_i64, t_i64) -> mk_struct! {t_i64, i1});
+        ifn!(
+            "llvm.usub.with.overflow.i128".to_string(),
+            fn(t_i128, t_i128) -> mk_struct! {t_i128, i1}
+        );
 
-        ifn!("llvm.smul.with.overflow.i8", fn(t_i8, t_i8) -> mk_struct! {t_i8, i1});
-        ifn!("llvm.smul.with.overflow.i16", fn(t_i16, t_i16) -> mk_struct! {t_i16, i1});
-        ifn!("llvm.smul.with.overflow.i32", fn(t_i32, t_i32) -> mk_struct! {t_i32, i1});
-        ifn!("llvm.smul.with.overflow.i64", fn(t_i64, t_i64) -> mk_struct! {t_i64, i1});
-        ifn!("llvm.smul.with.overflow.i128", fn(t_i128, t_i128) -> mk_struct! {t_i128, i1});
+        ifn!("llvm.smul.with.overflow.i8".to_string(), fn(t_i8, t_i8) -> mk_struct! {t_i8, i1});
+        ifn!("llvm.smul.with.overflow.i16".to_string(), fn(t_i16, t_i16) -> mk_struct! {t_i16, i1});
+        ifn!("llvm.smul.with.overflow.i32".to_string(), fn(t_i32, t_i32) -> mk_struct! {t_i32, i1});
+        ifn!("llvm.smul.with.overflow.i64".to_string(), fn(t_i64, t_i64) -> mk_struct! {t_i64, i1});
+        ifn!(
+            "llvm.smul.with.overflow.i128".to_string(),
+            fn(t_i128, t_i128) -> mk_struct! {t_i128, i1}
+        );
 
-        ifn!("llvm.umul.with.overflow.i8", fn(t_i8, t_i8) -> mk_struct! {t_i8, i1});
-        ifn!("llvm.umul.with.overflow.i16", fn(t_i16, t_i16) -> mk_struct! {t_i16, i1});
-        ifn!("llvm.umul.with.overflow.i32", fn(t_i32, t_i32) -> mk_struct! {t_i32, i1});
-        ifn!("llvm.umul.with.overflow.i64", fn(t_i64, t_i64) -> mk_struct! {t_i64, i1});
-        ifn!("llvm.umul.with.overflow.i128", fn(t_i128, t_i128) -> mk_struct! {t_i128, i1});
+        ifn!("llvm.umul.with.overflow.i8".to_string(), fn(t_i8, t_i8) -> mk_struct! {t_i8, i1});
+        ifn!("llvm.umul.with.overflow.i16".to_string(), fn(t_i16, t_i16) -> mk_struct! {t_i16, i1});
+        ifn!("llvm.umul.with.overflow.i32".to_string(), fn(t_i32, t_i32) -> mk_struct! {t_i32, i1});
+        ifn!("llvm.umul.with.overflow.i64".to_string(), fn(t_i64, t_i64) -> mk_struct! {t_i64, i1});
+        ifn!(
+            "llvm.umul.with.overflow.i128".to_string(),
+            fn(t_i128, t_i128) -> mk_struct! {t_i128, i1}
+        );
 
-        ifn!("llvm.sadd.sat.i8", fn(t_i8, t_i8) -> t_i8);
-        ifn!("llvm.sadd.sat.i16", fn(t_i16, t_i16) -> t_i16);
-        ifn!("llvm.sadd.sat.i32", fn(t_i32, t_i32) -> t_i32);
-        ifn!("llvm.sadd.sat.i64", fn(t_i64, t_i64) -> t_i64);
-        ifn!("llvm.sadd.sat.i128", fn(t_i128, t_i128) -> t_i128);
+        ifn!("llvm.sadd.sat.i8".to_string(), fn(t_i8, t_i8) -> t_i8);
+        ifn!("llvm.sadd.sat.i16".to_string(), fn(t_i16, t_i16) -> t_i16);
+        ifn!("llvm.sadd.sat.i32".to_string(), fn(t_i32, t_i32) -> t_i32);
+        ifn!("llvm.sadd.sat.i64".to_string(), fn(t_i64, t_i64) -> t_i64);
+        ifn!("llvm.sadd.sat.i128".to_string(), fn(t_i128, t_i128) -> t_i128);
 
-        ifn!("llvm.uadd.sat.i8", fn(t_i8, t_i8) -> t_i8);
-        ifn!("llvm.uadd.sat.i16", fn(t_i16, t_i16) -> t_i16);
-        ifn!("llvm.uadd.sat.i32", fn(t_i32, t_i32) -> t_i32);
-        ifn!("llvm.uadd.sat.i64", fn(t_i64, t_i64) -> t_i64);
-        ifn!("llvm.uadd.sat.i128", fn(t_i128, t_i128) -> t_i128);
+        ifn!("llvm.uadd.sat.i8".to_string(), fn(t_i8, t_i8) -> t_i8);
+        ifn!("llvm.uadd.sat.i16".to_string(), fn(t_i16, t_i16) -> t_i16);
+        ifn!("llvm.uadd.sat.i32".to_string(), fn(t_i32, t_i32) -> t_i32);
+        ifn!("llvm.uadd.sat.i64".to_string(), fn(t_i64, t_i64) -> t_i64);
+        ifn!("llvm.uadd.sat.i128".to_string(), fn(t_i128, t_i128) -> t_i128);
 
-        ifn!("llvm.ssub.sat.i8", fn(t_i8, t_i8) -> t_i8);
-        ifn!("llvm.ssub.sat.i16", fn(t_i16, t_i16) -> t_i16);
-        ifn!("llvm.ssub.sat.i32", fn(t_i32, t_i32) -> t_i32);
-        ifn!("llvm.ssub.sat.i64", fn(t_i64, t_i64) -> t_i64);
-        ifn!("llvm.ssub.sat.i128", fn(t_i128, t_i128) -> t_i128);
+        ifn!("llvm.ssub.sat.i8".to_string(), fn(t_i8, t_i8) -> t_i8);
+        ifn!("llvm.ssub.sat.i16".to_string(), fn(t_i16, t_i16) -> t_i16);
+        ifn!("llvm.ssub.sat.i32".to_string(), fn(t_i32, t_i32) -> t_i32);
+        ifn!("llvm.ssub.sat.i64".to_string(), fn(t_i64, t_i64) -> t_i64);
+        ifn!("llvm.ssub.sat.i128".to_string(), fn(t_i128, t_i128) -> t_i128);
 
-        ifn!("llvm.usub.sat.i8", fn(t_i8, t_i8) -> t_i8);
-        ifn!("llvm.usub.sat.i16", fn(t_i16, t_i16) -> t_i16);
-        ifn!("llvm.usub.sat.i32", fn(t_i32, t_i32) -> t_i32);
-        ifn!("llvm.usub.sat.i64", fn(t_i64, t_i64) -> t_i64);
-        ifn!("llvm.usub.sat.i128", fn(t_i128, t_i128) -> t_i128);
+        ifn!("llvm.usub.sat.i8".to_string(), fn(t_i8, t_i8) -> t_i8);
+        ifn!("llvm.usub.sat.i16".to_string(), fn(t_i16, t_i16) -> t_i16);
+        ifn!("llvm.usub.sat.i32".to_string(), fn(t_i32, t_i32) -> t_i32);
+        ifn!("llvm.usub.sat.i64".to_string(), fn(t_i64, t_i64) -> t_i64);
+        ifn!("llvm.usub.sat.i128".to_string(), fn(t_i128, t_i128) -> t_i128);
 
-        ifn!("llvm.lifetime.start.p0i8", fn(t_i64, i8p) -> void);
-        ifn!("llvm.lifetime.end.p0i8", fn(t_i64, i8p) -> void);
+        for t in i8p_types {
+            if t.0 == AddressSpace(0) {
+                ifn!("llvm.lifetime.start".to_string(), fn(t_i64, t.1) -> void);
+                ifn!("llvm.lifetime.end".to_string(), fn(t_i64, t.1) -> void);
+            }
+            ifn!(format!("llvm.lifetime.start.p{:?}i8", t.0.0), fn(t_i64, t.1) -> void);
+            ifn!(format!("llvm.lifetime.end.p{:?}i8", t.0.0), fn(t_i64, t.1) -> void);
+        }
 
-        ifn!("llvm.expect.i1", fn(i1, i1) -> i1);
-        ifn!("llvm.eh.typeid.for", fn(i8p) -> t_i32);
-        ifn!("llvm.localescape", fn(...) -> void);
-        ifn!("llvm.localrecover", fn(i8p, i8p, t_i32) -> i8p);
-        ifn!("llvm.x86.seh.recoverfp", fn(i8p, i8p) -> i8p);
+        ifn!("llvm.expect.i1".to_string(), fn(i1, i1) -> i1);
+        for t in i8p_types {
+            if t.0 == AddressSpace(0) {
+                ifn!("llvm.eh.typeid.for".to_string(), fn(t.1) -> t_i32);
+            }
+            ifn!(format!("llvm.eh.typeid.for.p{:?}i8", t.0.0), fn(t.1) -> t_i32);
+        }
+        ifn!("llvm.localescape".to_string(), fn(...) -> void);
 
-        ifn!("llvm.assume", fn(i1) -> void);
-        ifn!("llvm.prefetch", fn(i8p, t_i32, t_i32, t_i32) -> void);
+        ifn!("llvm.localrecover".to_string(), fn(i8p_i, i8p_a, t_i32) -> i8p_a);
+        ifn!("llvm.x86.seh.recoverfp".to_string(), fn(i8p_i, i8p_a) -> i8p_a);
+
+        ifn!("llvm.assume".to_string(), fn(i1) -> void);
+        for t in i8p_types {
+            if t.0 == AddressSpace(0) {
+                ifn!("llvm.prefetch".to_string(), fn(t.1, t_i32, t_i32, t_i32) -> void);
+            }
+            ifn!(format!("llvm.prefetch.p{:?}i8", t.0.0), fn(t.1, t_i32, t_i32, t_i32) -> void);
+        }
 
         // This isn't an "LLVM intrinsic", but LLVM's optimization passes
         // recognize it like one and we assume it exists in `core::slice::cmp`
-        match self.sess().target.arch.as_ref() {
-            "avr" | "msp430" => ifn!("memcmp", fn(i8p, i8p, t_isize) -> t_i16),
-            _ => ifn!("memcmp", fn(i8p, i8p, t_isize) -> t_i32),
+        for t in i8p_types {
+            for t2 in i8p_types {
+                if t.0 == AddressSpace(0) && t2.0 == AddressSpace(0) {
+                    match self.sess().target.arch.as_ref() {
+                        "avr" | "msp430" => {
+                            ifn!("memcmp".to_string(), fn(t.1, t2.1, t_isize) -> t_i16)
+                        }
+                        _ => {
+                            ifn!("memcmp".to_string(), fn(t.1, t2.1, t_isize) -> t_i32)
+                        }
+                    }
+                }
+                match self.sess().target.arch.as_ref() {
+                    "avr" | "msp430" => {
+                        ifn!(format!("memcmp.p{:?}i8.p{:?}i8", t.0.0, t2.0.0), fn(t.1, t2.1, t_isize) -> t_i16)
+                    }
+                    _ => {
+                        ifn!(format!("memcmp.p{:?}i8.p{:?}i8", t.0.0, t2.0.0), fn(t.1, t2.1, t_isize) -> t_i32)
+                    }
+                }
+            }
         }
 
         // variadic intrinsics
-        ifn!("llvm.va_start", fn(i8p) -> void);
-        ifn!("llvm.va_end", fn(i8p) -> void);
-        ifn!("llvm.va_copy", fn(i8p, i8p) -> void);
+        for t in i8p_types {
+            if t.0 == AddressSpace(0) {
+                ifn!("llvm.va_start".to_string(), fn(t.1) -> void);
+                ifn!("llvm.va_end".to_string(), fn(t.1) -> void);
+                // TODO: Need more clarity on what restrictions are for arguments.
+                ifn!("llvm.va_copy".to_string(), fn(t.1, t.1) -> void);
+            }
+            ifn!(format!("llvm.va_start.p{:?}i8", t.0.0), fn(t.1) -> void);
+            ifn!(format!("llvm.va_end.p{:?}i8", t.0.0), fn(t.1) -> void);
+            // TODO: Need more clarity on what restrictions are for arguments.
+            ifn!(format!("llvm.va_copy.p{:?}i8.p{0:?}i8", t.0.0), fn(t.1, t.1) -> void);
+        }
 
         if self.sess().instrument_coverage() {
-            ifn!("llvm.instrprof.increment", fn(i8p, t_i64, t_i32, t_i32) -> void);
+            for t in i8p_types {
+                if t.0 == AddressSpace(0) {
+                    // TODO: Need more clarity on what restrictions are for arguments.
+                    ifn!("llvm.instrprof.increment".to_string(), fn(t.1, t_i64, t_i32, t_i32) -> void);
+                }
+                // TODO: Need more clarity on what restrictions are for arguments.
+                ifn!(format!("llvm.instrprof.increment.p{:?}i8", t.0.0), fn(t.1, t_i64, t_i32, t_i32) -> void);
+            }
         }
 
-        ifn!("llvm.type.test", fn(i8p, t_metadata) -> i1);
-        ifn!("llvm.type.checked.load", fn(i8p, t_i32, t_metadata) -> mk_struct! {i8p, i1});
+        for t in i8p_types {
+            if t.0 == AddressSpace(0) {
+                // TODO: Need more clarity on what restrictions are for arguments.
+                ifn!("llvm.type.test".to_string(), fn(t.1, t_metadata) -> i1);
+                ifn!("llvm.type.checked.load".to_string(), fn(t.1, t_i32, t_metadata) -> mk_struct! {t.1, i1});
+            }
+            // TODO: Need more clarity on what restrictions are for arguments.
+            ifn!(format!("llvm.type.test.p{:?}i8", t.0.0), fn(t.1, t_metadata) -> i1);
+            ifn!(format!("llvm.type.checked.load.p{:?}i8", t.0.0), fn(t.1, t_i32, t_metadata) -> mk_struct! {t.1, i1});
+        }
 
         if self.sess().opts.debuginfo != DebugInfo::None {
-            ifn!("llvm.dbg.declare", fn(t_metadata, t_metadata) -> void);
-            ifn!("llvm.dbg.value", fn(t_metadata, t_i64, t_metadata) -> void);
+            ifn!("llvm.dbg.declare".to_string(), fn(t_metadata, t_metadata) -> void);
+            ifn!("llvm.dbg.value".to_string(), fn(t_metadata, t_i64, t_metadata) -> void);
         }
 
-        ifn!("llvm.ptrmask", fn(i8p, t_isize) -> i8p);
+        for t in i8p_types {
+            if t.0 == AddressSpace(0) {
+                ifn!("llvm.ptrmask".to_string(), fn(t.1, t_isize) -> t.1);
+            }
+            ifn!(format!("llvm.ptrmask.p{:?}i8", t.0.0), fn(t.1, t_isize) -> t.1);
+        }
 
         None
     }
 
     pub(crate) fn eh_catch_typeinfo(&self) -> &'ll Value {
+        let dl = &self.tcx.data_layout;
         if let Some(eh_catch_typeinfo) = self.eh_catch_typeinfo.get() {
             return eh_catch_typeinfo;
         }
@@ -888,12 +987,21 @@ impl<'ll> CodegenCx<'ll, '_> {
         let eh_catch_typeinfo = match tcx.lang_items().eh_catch_typeinfo() {
             Some(def_id) => self.get_static(def_id),
             _ => {
-                let ty = self
-                    .type_struct(&[self.type_ptr_to(self.type_isize()), self.type_i8p()], false);
+                // TODO: Get correct address space.
+                let ty = self.type_struct(
+                    &[
+                        self.type_ptr_to_ext(self.type_isize(), dl.default_address_space),
+                        self.type_i8p_ext(dl.default_address_space),
+                    ],
+                    false,
+                );
                 self.declare_global("rust_eh_catch_typeinfo", ty)
             }
         };
-        let eh_catch_typeinfo = self.const_bitcast(eh_catch_typeinfo, self.type_i8p());
+        // TODO: Get correct address space here. If we declare a global this should be the global
+        // address space.
+        let eh_catch_typeinfo =
+            self.const_bitcast(eh_catch_typeinfo, self.type_i8p_ext(dl.default_address_space));
         self.eh_catch_typeinfo.set(Some(eh_catch_typeinfo));
         eh_catch_typeinfo
     }

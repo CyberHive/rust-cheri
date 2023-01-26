@@ -25,7 +25,6 @@ pub trait BaseTypeMethods<'tcx>: Backend<'tcx> {
     fn type_func(&self, args: &[Self::Type], ret: Self::Type) -> Self::Type;
     fn type_struct(&self, els: &[Self::Type], packed: bool) -> Self::Type;
     fn type_kind(&self, ty: Self::Type) -> TypeKind;
-    fn type_ptr_to(&self, ty: Self::Type) -> Self::Type;
     fn type_ptr_to_ext(&self, ty: Self::Type, address_space: AddressSpace) -> Self::Type;
     fn element_type(&self, ty: Self::Type) -> Self::Type;
 
@@ -41,10 +40,6 @@ pub trait BaseTypeMethods<'tcx>: Backend<'tcx> {
 }
 
 pub trait DerivedTypeMethods<'tcx>: BaseTypeMethods<'tcx> + MiscMethods<'tcx> {
-    fn type_i8p(&self) -> Self::Type {
-        self.type_i8p_ext(AddressSpace::DATA)
-    }
-
     fn type_i8p_ext(&self, address_space: AddressSpace) -> Self::Type {
         self.type_ptr_to_ext(self.type_i8(), address_space)
     }

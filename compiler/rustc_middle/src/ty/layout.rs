@@ -807,7 +807,8 @@ where
         let param_env = cx.param_env();
 
         let addr_space_of_ty = |ty: Ty<'tcx>| {
-            if ty.is_fn() { cx.data_layout().instruction_address_space } else { AddressSpace::DATA }
+            // TODO: This is entirely insufficient.
+            if ty.is_fn() { cx.data_layout().instruction_address_space } else { cx.data_layout().default_address_space }
         };
 
         let pointee_info = match *this.ty.kind() {

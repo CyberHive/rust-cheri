@@ -16,7 +16,7 @@ use rustc_middle::mir::interpret::{ConstAllocation, GlobalAlloc, Scalar};
 use rustc_middle::ty::layout::{LayoutOf, TyAndLayout};
 use rustc_middle::ty::TyCtxt;
 use rustc_session::cstore::{DllCallingConvention, DllImport, PeImportNameType};
-use rustc_target::abi::{self, AddressSpace, HasDataLayout, Pointer, Size};
+use rustc_target::abi::{self, HasDataLayout, Pointer, Size};
 use rustc_target::spec::Target;
 
 use libc::{c_char, c_uint};
@@ -206,7 +206,10 @@ impl<'ll, 'tcx> ConstMethods<'tcx> for CodegenCx<'ll, 'tcx> {
         let len = s.len();
         let cs = consts::ptrcast(
             str_global,
-            self.type_ptr_to(self.layout_of(self.tcx.types.str_).llvm_type(self)),
+            self.type_ptr_to_ext(
+                self.layout_of(self.tcx.types.str_).llvm_type(self),
+                self.tcx.data_layout.globals_address_space,
+            ),
         );
         (cs, self.const_usize(len as u64))
     }
@@ -256,7 +259,7 @@ impl<'ll, 'tcx> ConstMethods<'tcx> for CodegenCx<'ll, 'tcx> {
                         if !self.sess().fewer_names() {
                             llvm::set_value_name(value, format!("{:?}", alloc_id).as_bytes());
                         }
-                        (value, AddressSpace::DATA)
+                        (value, self.data_layout().globals_address_space)
                     }
                     GlobalAlloc::Function(fn_instance) => (
                         self.get_fn_addr(fn_instance.polymorphize(self.tcx)),
@@ -269,12 +272,12 @@ impl<'ll, 'tcx> ConstMethods<'tcx> for CodegenCx<'ll, 'tcx> {
                             .unwrap_memory();
                         let init = const_alloc_to_llvm(self, alloc);
                         let value = self.static_addr_of(init, alloc.inner().align, None);
-                        (value, AddressSpace::DATA)
+                        (value, self.data_layout().globals_address_space)
                     }
                     GlobalAlloc::Static(def_id) => {
                         assert!(self.tcx.is_static(def_id));
                         assert!(!self.tcx.is_thread_local_static(def_id));
-                        (self.get_static(def_id), AddressSpace::DATA)
+                        (self.get_static(def_id), self.data_layout().globals_address_space)
                     }
                 };
                 let llval = unsafe {
@@ -304,9 +307,12 @@ impl<'ll, 'tcx> ConstMethods<'tcx> for CodegenCx<'ll, 'tcx> {
         alloc: ConstAllocation<'tcx>,
         offset: Size,
     ) -> PlaceRef<'tcx, &'ll Value> {
+        let dl = &self.tcx.data_layout;
+
         let alloc_align = alloc.inner().align;
         assert_eq!(alloc_align, layout.align.abi);
-        let llty = self.type_ptr_to(layout.llvm_type(self));
+        // TODO: Get the correct address space.
+        let llty = self.type_ptr_to_ext(layout.llvm_type(self), dl.default_address_space);
         let llval = if layout.size == Size::ZERO {
             let llval = self.const_usize(alloc_align.bytes());
             unsafe { llvm::LLVMConstIntToPtr(llval, llty) }
@@ -317,7 +323,8 @@ impl<'ll, 'tcx> ConstMethods<'tcx> for CodegenCx<'ll, 'tcx> {
             let llval = unsafe {
                 llvm::LLVMRustConstInBoundsGEP2(
                     self.type_i8(),
-                    self.const_bitcast(base_addr, self.type_i8p()),
+                    // TODO: Get the correct address space.
+                    self.const_bitcast(base_addr, self.type_i8p_ext(dl.default_address_space)),
                     &self.const_usize(offset.bytes()),
                     1,
                 )

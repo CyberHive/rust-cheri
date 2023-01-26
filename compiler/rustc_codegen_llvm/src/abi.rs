@@ -226,7 +226,9 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
             // uses it for i16 -> {i8, i8}, but not for i24 -> {i8, i8, i8}.
             let can_store_through_cast_ptr = false;
             if can_store_through_cast_ptr {
-                let cast_ptr_llty = bx.type_ptr_to(cast.llvm_type(bx));
+                // TODO: Get correct address space from dst.llval.
+                let cast_ptr_llty = bx
+                    .type_ptr_to_ext(cast.llvm_type(bx), bx.tcx.data_layout.default_address_space);
                 let cast_dst = bx.pointercast(dst.llval, cast_ptr_llty);
                 bx.store(val, cast_dst, self.layout.align.abi);
             } else {
@@ -331,6 +333,7 @@ pub trait FnAbiLlvmExt<'ll, 'tcx> {
 
 impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
     fn llvm_type(&self, cx: &CodegenCx<'ll, 'tcx>) -> &'ll Type {
+        let dl = &cx.tcx.data_layout;
         // Ignore "extra" args from the call site for C variadic functions.
         // Only the "fixed" args are part of the LLVM function signature.
         let args =
@@ -346,7 +349,9 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
             PassMode::Direct(_) | PassMode::Pair(..) => self.ret.layout.immediate_llvm_type(cx),
             PassMode::Cast(cast, _) => cast.llvm_type(cx),
             PassMode::Indirect { .. } => {
-                llargument_tys.push(cx.type_ptr_to(self.ret.memory_ty(cx)));
+                // TODO: Get the correct address space. Probably alloca.
+                llargument_tys
+                    .push(cx.type_ptr_to_ext(self.ret.memory_ty(cx), dl.default_address_space));
                 cx.type_void()
             }
         };
@@ -375,7 +380,8 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
                     cast.llvm_type(cx)
                 }
                 PassMode::Indirect { attrs: _, extra_attrs: None, on_stack: _ } => {
-                    cx.type_ptr_to(arg.memory_ty(cx))
+                    // TODO: Get the correct address space. on_stack may be helpful here.
+                    cx.type_ptr_to_ext(arg.memory_ty(cx), dl.default_address_space)
                 }
             };
             llargument_tys.push(llarg_ty);

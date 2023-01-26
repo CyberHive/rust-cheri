@@ -7,7 +7,7 @@ use rustc_middle::bug;
 use rustc_middle::ty::layout::{FnAbiOf, LayoutOf, TyAndLayout};
 use rustc_middle::ty::print::{with_no_trimmed_paths, with_no_visible_paths};
 use rustc_middle::ty::{self, Ty, TypeVisitable};
-use rustc_target::abi::{Abi, AddressSpace, Align, FieldsShape};
+use rustc_target::abi::{Abi, Align, FieldsShape, HasDataLayout};
 use rustc_target::abi::{Int, Pointer, F32, F64};
 use rustc_target::abi::{PointeeInfo, Scalar, Size, TyAbiInterface, Variants};
 use smallvec::{smallvec, SmallVec};
@@ -225,6 +225,7 @@ impl<'tcx> LayoutLlvmExt<'tcx> for TyAndLayout<'tcx> {
     /// of that field's type - this is useful for taking the address of
     /// that field and ensuring the struct has the right alignment.
     fn llvm_type<'a>(&self, cx: &CodegenCx<'a, 'tcx>) -> &'a Type {
+        let dl = &cx.tcx.data_layout;
         if let Abi::Scalar(scalar) = self.abi {
             // Use a different cache for scalars because pointers to DSTs
             // can be either fat or thin (data pointers of fat pointers).
@@ -233,10 +234,15 @@ impl<'tcx> LayoutLlvmExt<'tcx> for TyAndLayout<'tcx> {
             }
             let llty = match *self.ty.kind() {
                 ty::Ref(_, ty, _) | ty::RawPtr(ty::TypeAndMut { ty, .. }) => {
-                    cx.type_ptr_to(cx.layout_of(ty).llvm_type(cx))
+                    // TODO: Get the correct address space.
+                    cx.type_ptr_to_ext(cx.layout_of(ty).llvm_type(cx), dl.default_address_space)
                 }
                 ty::Adt(def, _) if def.is_box() => {
-                    cx.type_ptr_to(cx.layout_of(self.ty.boxed_ty()).llvm_type(cx))
+                    // TODO: Get the correct address space. Possibly global?
+                    cx.type_ptr_to_ext(
+                        cx.layout_of(self.ty.boxed_ty()).llvm_type(cx),
+                        dl.default_address_space,
+                    )
                 }
                 ty::FnPtr(sig) => {
                     cx.fn_ptr_backend_type(cx.fn_abi_of_fn_ptr(sig, ty::List::empty()))
@@ -318,7 +324,7 @@ impl<'tcx> LayoutLlvmExt<'tcx> for TyAndLayout<'tcx> {
                     if let Some(pointee) = self.pointee_info_at(cx, offset) {
                         (cx.type_pointee_for_align(pointee.align), pointee.address_space)
                     } else {
-                        (cx.type_i8(), AddressSpace::DATA)
+                        (cx.type_i8(), cx.tcx.data_layout().default_address_space)
                     };
                 cx.type_ptr_to_ext(pointee, address_space)
             }

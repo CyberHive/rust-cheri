@@ -169,11 +169,14 @@ pub fn unsized_info<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                 cx.tcx().vtable_trait_upcasting_coercion_new_vptr_slot((source, target));
 
             if let Some(entry_idx) = vptr_entry_idx {
-                let ptr_ty = cx.type_i8p();
                 let dl = &cx.tcx().data_layout;
+                // TODO: Correct address space?
+                let ptr_ty = cx.type_i8p_ext(dl.instruction_address_space);
                 let ptr_align = dl.ptr_layout(Some(dl.instruction_address_space)).align.abi;
                 let vtable_ptr_ty = vtable_ptr_ty(cx, target, target_dyn_kind);
-                let llvtable = bx.pointercast(old_info, bx.type_ptr_to(ptr_ty));
+                // TODO: Get the correct address space, probaly global?
+                let llvtable =
+                    bx.pointercast(old_info, bx.type_ptr_to_ext(ptr_ty, dl.globals_address_space));
                 let gep = bx.inbounds_gep(
                     ptr_ty,
                     llvtable,
@@ -227,7 +230,11 @@ pub fn unsize_ptr<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         (&ty::Ref(_, a, _), &ty::Ref(_, b, _) | &ty::RawPtr(ty::TypeAndMut { ty: b, .. }))
         | (&ty::RawPtr(ty::TypeAndMut { ty: a, .. }), &ty::RawPtr(ty::TypeAndMut { ty: b, .. })) => {
             assert_eq!(bx.cx().type_is_sized(a), old_info.is_none());
-            let ptr_ty = bx.cx().type_ptr_to(bx.cx().backend_type(bx.cx().layout_of(b)));
+            // TODO: Get the correct address space from src.
+            let ptr_ty = bx.cx().type_ptr_to_ext(
+                bx.cx().backend_type(bx.cx().layout_of(b)),
+                bx.tcx().data_layout.default_address_space,
+            );
             (bx.pointercast(src, ptr_ty), unsized_info(bx, a, b, old_info))
         }
         (&ty::Adt(def_a, _), &ty::Adt(def_b, _)) => {
@@ -431,10 +438,21 @@ pub fn maybe_create_entry_wrapper<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         rust_main_def_id: DefId,
         entry_type: EntryFnType,
     ) -> Bx::Function {
+        let dl = &cx.tcx().data_layout;
         // The entry function is either `int main(void)` or `int main(int argc, char **argv)`,
         // depending on whether the target needs `argc` and `argv` to be passed in.
         let llfty = if cx.sess().target.main_needs_argc_argv {
-            cx.type_func(&[cx.type_int(), cx.type_ptr_to(cx.type_i8p())], cx.type_int())
+            // TODO: Correct address space for i8p?
+            cx.type_func(
+                &[
+                    cx.type_int(),
+                    cx.type_ptr_to_ext(
+                        cx.type_i8p_ext(dl.globals_address_space),
+                        dl.globals_address_space,
+                    ),
+                ],
+                cx.type_int(),
+            )
         } else {
             cx.type_func(&[], cx.type_int())
         };
@@ -471,7 +489,9 @@ pub fn maybe_create_entry_wrapper<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         bx.insert_reference_to_gdb_debug_scripts_section_global();
 
         let isize_ty = cx.type_isize();
-        let i8pp_ty = cx.type_ptr_to(cx.type_i8p());
+        // TODO: Correct address space for i8p?
+        let i8pp_ty =
+            cx.type_ptr_to_ext(cx.type_i8p_ext(dl.globals_address_space), dl.globals_address_space);
         let (arg_argc, arg_argv) = get_argc_argv(cx, &mut bx);
 
         let (start_fn, start_ty, args) = if let EntryFnType::Main { sigpipe } = entry_type {
@@ -512,6 +532,7 @@ fn get_argc_argv<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     cx: &'a Bx::CodegenCx,
     bx: &mut Bx,
 ) -> (Bx::Value, Bx::Value) {
+    let dl = &cx.tcx().data_layout;
     if cx.sess().target.main_needs_argc_argv {
         // Params from native `main()` used as args for rust start function
         let param_argc = bx.get_param(0);
@@ -522,7 +543,9 @@ fn get_argc_argv<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     } else {
         // The Rust start function doesn't need `argc` and `argv`, so just pass zeros.
         let arg_argc = bx.const_int(cx.type_int(), 0);
-        let arg_argv = bx.const_null(cx.type_ptr_to(cx.type_i8p()));
+        let arg_argv = bx.const_null(
+            cx.type_ptr_to_ext(cx.type_i8p_ext(dl.globals_address_space), dl.globals_address_space),
+        );
         (arg_argc, arg_argv)
     }
 }

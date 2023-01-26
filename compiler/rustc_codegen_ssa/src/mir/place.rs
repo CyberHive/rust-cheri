@@ -90,6 +90,7 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
         let field = self.layout.field(bx.cx(), ix);
         let offset = self.layout.fields.offset(ix);
         let effective_field_align = self.align.restrict_for_offset(offset);
+        let dl = &bx.tcx().data_layout;
 
         let mut simple = || {
             let llval = match self.layout.abi {
@@ -107,7 +108,9 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
                 }
                 Abi::Scalar(_) | Abi::ScalarPair(..) | Abi::Vector { .. } if field.is_zst() => {
                     // ZST fields are not included in Scalar, ScalarPair, and Vector layouts, so manually offset the pointer.
-                    let byte_ptr = bx.pointercast(self.llval, bx.cx().type_i8p());
+                    // TODO: What is the correct address space here?
+                    let byte_ptr =
+                        bx.pointercast(self.llval, bx.cx().type_i8p_ext(dl.default_address_space));
                     bx.gep(bx.cx().type_i8(), byte_ptr, &[bx.const_usize(offset.bytes())])
                 }
                 Abi::Scalar(_) | Abi::ScalarPair(..) => {
@@ -126,7 +129,11 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
             };
             PlaceRef {
                 // HACK(eddyb): have to bitcast pointers until LLVM removes pointee types.
-                llval: bx.pointercast(llval, bx.cx().type_ptr_to(bx.cx().backend_type(field))),
+                // TODO: Get the correct address space from llval.
+                llval: bx.pointercast(
+                    llval,
+                    bx.cx().type_ptr_to_ext(bx.cx().backend_type(field), dl.default_address_space),
+                ),
                 llextra: if bx.cx().type_has_metadata(field.ty) { self.llextra } else { None },
                 layout: field,
                 align: effective_field_align,
@@ -187,7 +194,8 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
         debug!("struct_field_ptr: DST field offset: {:?}", offset);
 
         // Cast and adjust pointer.
-        let byte_ptr = bx.pointercast(self.llval, bx.cx().type_i8p());
+        // TODO: Find the correct address space here. It should be whatever llval was in.
+        let byte_ptr = bx.pointercast(self.llval, bx.cx().type_i8p_ext(dl.default_address_space));
         let byte_ptr = bx.gep(bx.cx().type_i8(), byte_ptr, &[offset]);
 
         // Finally, cast back to the type expected.
@@ -195,7 +203,9 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
         debug!("struct_field_ptr: Field type is {:?}", ll_fty);
 
         PlaceRef {
-            llval: bx.pointercast(byte_ptr, bx.cx().type_ptr_to(ll_fty)),
+            // TODO: Find the correct address space here. It should be whatever llval was in.
+            llval: bx
+                .pointercast(byte_ptr, bx.cx().type_ptr_to_ext(ll_fty, dl.default_address_space)),
             llextra: self.llextra,
             layout: field,
             align: effective_field_align,
@@ -395,7 +405,11 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
 
         // Cast to the appropriate variant struct type.
         let variant_ty = bx.cx().backend_type(downcast.layout);
-        downcast.llval = bx.pointercast(downcast.llval, bx.cx().type_ptr_to(variant_ty));
+        // TODO: Get the correct address space. It should be the same as the original downcast.llval.
+        downcast.llval = bx.pointercast(
+            downcast.llval,
+            bx.cx().type_ptr_to_ext(variant_ty, bx.tcx().data_layout.default_address_space),
+        );
 
         downcast
     }
@@ -410,7 +424,11 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
 
         // Cast to the appropriate type.
         let variant_ty = bx.cx().backend_type(downcast.layout);
-        downcast.llval = bx.pointercast(downcast.llval, bx.cx().type_ptr_to(variant_ty));
+        // TODO: Get the correct address space. It should be the same as the original downcast.llval.
+        downcast.llval = bx.pointercast(
+            downcast.llval,
+            bx.cx().type_ptr_to_ext(variant_ty, bx.tcx().data_layout.default_address_space),
+        );
 
         downcast
     }
@@ -492,7 +510,11 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     // array or slice type (`*[%_; new_len]`).
                     subslice.llval = bx.pointercast(
                         subslice.llval,
-                        bx.cx().type_ptr_to(bx.cx().backend_type(subslice.layout)),
+                        // TODO: Get the correct address space. Should be the same as subslice.layout.
+                        bx.cx().type_ptr_to_ext(
+                            bx.cx().backend_type(subslice.layout),
+                            tcx.data_layout.default_address_space,
+                        ),
                     );
 
                     subslice

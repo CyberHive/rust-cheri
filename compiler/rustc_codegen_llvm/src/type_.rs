@@ -189,15 +189,6 @@ impl<'ll, 'tcx> BaseTypeMethods<'tcx> for CodegenCx<'ll, 'tcx> {
         unsafe { llvm::LLVMRustGetTypeKind(ty).to_generic() }
     }
 
-    fn type_ptr_to(&self, ty: &'ll Type) -> &'ll Type {
-        assert_ne!(
-            self.type_kind(ty),
-            TypeKind::Function,
-            "don't call ptr_to on function types, use ptr_to_llvm_type on FnAbi instead or explicitly specify an address space if it makes sense"
-        );
-        ty.ptr_to(AddressSpace::DATA)
-    }
-
     fn type_ptr_to_ext(&self, ty: &'ll Type, address_space: AddressSpace) -> &'ll Type {
         ty.ptr_to(address_space)
     }

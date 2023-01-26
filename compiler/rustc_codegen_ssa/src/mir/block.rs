@@ -398,7 +398,11 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     }
                 };
                 let ty = bx.cast_backend_type(cast_ty);
-                let addr = bx.pointercast(llslot, bx.type_ptr_to(ty));
+                // TODO: Get correct address space from llslot (probably alloca).
+                let addr = bx.pointercast(
+                    llslot,
+                    bx.type_ptr_to_ext(ty, bx.tcx().data_layout.default_address_space),
+                );
                 bx.load(ty, addr, self.fn_abi.ret.layout.align.abi)
             }
         };
@@ -414,6 +418,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         target: mir::BasicBlock,
         unwind: Option<mir::BasicBlock>,
     ) {
+        let dl = &bx.tcx().data_layout;
         let ty = location.ty(self.mir, bx.tcx()).ty;
         let ty = self.monomorphize(ty);
         let drop_fn = Instance::resolve_drop_in_place(bx.tcx(), ty);
@@ -501,7 +506,12 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 let data_ty = bx.cx().backend_type(place.layout);
                 let vtable_ptr =
                     bx.gep(data_ty, data, &[bx.cx().const_i32(0), bx.cx().const_i32(1)]);
-                let vtable = bx.load(bx.type_i8p(), vtable_ptr, abi::Align::ONE);
+                // TODO: Correct address space?
+                let vtable = bx.load(
+                    bx.type_i8p_ext(dl.instruction_address_space),
+                    vtable_ptr,
+                    abi::Align::ONE,
+                );
                 // Truncate vtable off of args list
                 args = &args[..1];
                 debug!("args' = {:?}", args);
@@ -823,7 +833,11 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 let dest = match ret_dest {
                     _ if fn_abi.ret.is_indirect() => llargs[0],
                     ReturnDest::Nothing => {
-                        bx.const_undef(bx.type_ptr_to(bx.arg_memory_ty(&fn_abi.ret)))
+                        // TODO: Get the correct address space.
+                        bx.const_undef(bx.type_ptr_to_ext(
+                            bx.arg_memory_ty(&fn_abi.ret),
+                            bx.tcx().data_layout.default_address_space,
+                        ))
                     }
                     ReturnDest::IndirectOperand(dst, _) | ReturnDest::Store(dst) => dst.llval,
                     ReturnDest::DirectOperand(_) => {
@@ -1342,7 +1356,11 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             // Have to load the argument, maybe while casting it.
             if let PassMode::Cast(ty, _) = &arg.mode {
                 let llty = bx.cast_backend_type(ty);
-                let addr = bx.pointercast(llval, bx.type_ptr_to(llty));
+                // TODO: Get the correct address space from llval.
+                let addr = bx.pointercast(
+                    llval,
+                    bx.type_ptr_to_ext(llty, bx.tcx().data_layout.default_address_space),
+                );
                 llval = bx.load(llty, addr, align.min(arg.layout.align.abi));
             } else {
                 // We can't use `PlaceRef::load` here because the argument
@@ -1544,7 +1562,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
 
     fn landing_pad_type(&self) -> Bx::Type {
         let cx = self.cx;
-        cx.type_struct(&[cx.type_i8p(), cx.type_i32()], false)
+        let dl = &cx.tcx().data_layout;
+        // TODO: Correct address space?
+        cx.type_struct(&[cx.type_i8p_ext(dl.instruction_address_space), cx.type_i32()], false)
     }
 
     fn unreachable_block(&mut self) -> Bx::BasicBlock {
@@ -1714,7 +1734,11 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         }
 
         let llty = bx.backend_type(src.layout);
-        let cast_ptr = bx.pointercast(dst.llval, bx.type_ptr_to(llty));
+        // TODO: Get the correct address space from dst.llval.
+        let cast_ptr = bx.pointercast(
+            dst.llval,
+            bx.type_ptr_to_ext(llty, bx.tcx().data_layout.default_address_space),
+        );
         let align = src.layout.align.abi.min(dst.align);
         src.val.store(bx, PlaceRef::new_sized_aligned(cast_ptr, src.layout, align));
     }

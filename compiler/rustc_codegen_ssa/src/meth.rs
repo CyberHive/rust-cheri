@@ -22,9 +22,12 @@ impl<'a, 'tcx> VirtualIndex {
     ) -> Bx::Value {
         // Load the data pointer from the object.
         debug!("get_fn({llvtable:?}, {ty:?}, {self:?})");
+
+        let dl = &bx.tcx().data_layout;
+
         let llty = bx.fn_ptr_backend_type(fn_abi);
-        let llvtable = bx.pointercast(llvtable, bx.type_ptr_to(llty));
-        let dl = &bx.data_layout();
+        // TODO: Get the correct address space. Probably global?
+        let llvtable = bx.pointercast(llvtable, bx.type_ptr_to_ext(llty, dl.default_address_space));
 
         if bx.cx().sess().opts.unstable_opts.virtual_function_elimination
             && bx.cx().sess().lto() == Lto::Fat
@@ -55,9 +58,11 @@ impl<'a, 'tcx> VirtualIndex {
         // Load the data pointer from the object.
         debug!("get_int({:?}, {:?})", llvtable, self);
 
+        let dl = &bx.tcx().data_layout;
+
         let llty = bx.type_isize();
-        let llvtable = bx.pointercast(llvtable, bx.type_ptr_to(llty));
-        let dl = &bx.data_layout();
+        // TODO: Get the correct address space. Probably global?
+        let llvtable = bx.pointercast(llvtable, bx.type_ptr_to_ext(llty, dl.default_address_space));
         // NOTE: This was previously `usize_align`. Was there some significance to that or is the
         // pointer alignment the correct thing to use here?
         let ptr_align = dl.ptr_layout(Some(dl.instruction_address_space)).align.abi;
