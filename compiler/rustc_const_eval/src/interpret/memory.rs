@@ -686,7 +686,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                 let ty = self.tcx.type_of(def_id);
                 let layout = self.tcx.layout_of(ParamEnv::empty().and(ty)).unwrap();
                 assert!(!layout.is_unsized());
-                (layout.size, layout.align.abi, AllocKind::LiveData)
+                (layout.ty_size, layout.align.abi, AllocKind::LiveData)
             }
             Some(GlobalAlloc::Memory(alloc)) => {
                 // Need to duplicate the logic here, because the global allocations have

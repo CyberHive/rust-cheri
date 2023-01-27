@@ -7,7 +7,7 @@ pub fn compute_abi_info<Ty>(fn_abi: &mut FnAbi<'_, Ty>) {
     let fixup = |a: &mut ArgAbi<'_, Ty>| {
         match a.layout.abi {
             Abi::Uninhabited => {}
-            Abi::ScalarPair(..) | Abi::Aggregate { .. } => match a.layout.size.bits() {
+            Abi::ScalarPair(..) | Abi::Aggregate { .. } => match a.layout.ty_size.bits() {
                 8 => a.cast_to(Reg::i8()),
                 16 => a.cast_to(Reg::i16()),
                 32 => a.cast_to(Reg::i32()),
@@ -19,7 +19,7 @@ pub fn compute_abi_info<Ty>(fn_abi: &mut FnAbi<'_, Ty>) {
                 // (probably what clang calls "illegal vectors").
             }
             Abi::Scalar(_) => {
-                if a.layout.size.bytes() > 8 {
+                if a.layout.ty_size.bytes() > 8 {
                     a.make_indirect();
                 } else {
                     a.extend_integer_width_to(32);

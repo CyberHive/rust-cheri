@@ -1397,21 +1397,27 @@ pub struct LayoutS<'a> {
     pub largest_niche: Option<Niche>,
 
     pub align: AbiAndPrefAlign,
-    pub size: Size,
+    /// The total size of the represented type.
+    pub ty_size: Size,
+    /// The size of the value that can be represented with this layout - If we have extra metadata
+    /// then this won't be the same as `ty_size`.
+    pub val_size: Size,
 }
 
 impl<'a> LayoutS<'a> {
     pub fn scalar<C: HasDataLayout>(cx: &C, scalar: Scalar) -> Self {
         let largest_niche = Niche::from_scalar(cx, Size::ZERO, scalar);
-        let size = scalar.ty_size(cx);
+        let ty_size = scalar.ty_size(cx);
+        let val_size = scalar.val_size(cx);
         let align = scalar.align(cx);
         LayoutS {
             variants: Variants::Single { index: VariantIdx::new(0) },
             fields: FieldsShape::Primitive,
             abi: Abi::Scalar(scalar),
             largest_niche,
-            size,
             align,
+            ty_size,
+            val_size
         }
     }
 }
@@ -1421,9 +1427,10 @@ impl<'a> fmt::Debug for LayoutS<'a> {
         // This is how `Layout` used to print before it become
         // `Interned<LayoutS>`. We print it like this to avoid having to update
         // expected output in a lot of tests.
-        let LayoutS { size, align, abi, fields, largest_niche, variants } = self;
+        let LayoutS { ty_size, val_size, align, abi, fields, largest_niche, variants } = self;
         f.debug_struct("Layout")
-            .field("size", size)
+            .field("ty_size", ty_size)
+            .field("val_size", val_size)
             .field("align", align)
             .field("abi", abi)
             .field("fields", fields)
@@ -1466,7 +1473,11 @@ impl<'a> Layout<'a> {
     }
 
     pub fn size(self) -> Size {
-        self.0.0.size
+        self.0.0.ty_size
+    }
+
+    pub fn val_size(self) -> Size {
+        self.0.0.val_size
     }
 }
 
@@ -1624,8 +1635,8 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
     pub fn is_zst(&self) -> bool {
         match self.abi {
             Abi::Scalar(_) | Abi::ScalarPair(..) | Abi::Vector { .. } => false,
-            Abi::Uninhabited => self.size.bytes() == 0,
-            Abi::Aggregate { sized } => sized && self.size.bytes() == 0,
+            Abi::Uninhabited => self.ty_size.bytes() == 0,
+            Abi::Aggregate { sized } => sized && self.ty_size.bytes() == 0,
         }
     }
 }

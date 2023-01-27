@@ -6,7 +6,7 @@ use rustc_errors::{fluent, Applicability, DiagnosticMessage};
 use rustc_hir as hir;
 use rustc_hir::{is_range_literal, Expr, ExprKind, Node};
 use rustc_macros::LintDiagnostic;
-use rustc_middle::ty::layout::{IntegerExt, LayoutOf, SizeSkeleton};
+use rustc_middle::ty::layout::{IntegerExt, LayoutOf};
 use rustc_middle::ty::subst::SubstsRef;
 use rustc_middle::ty::{self, AdtKind, DefIdTree, Ty, TyCtxt, TypeSuperVisitable, TypeVisitable};
 use rustc_span::source_map;
@@ -809,10 +809,11 @@ pub(crate) fn repr_nullable_ptr<'tcx>(
         // At this point, the field's type is known to be nonnull and the parent enum is Option-like.
         // If the computed size for the field and the enum are different, the nonnull optimization isn't
         // being applied (and we've got a problem somewhere).
-        let compute_size_skeleton = |t| SizeSkeleton::compute(t, cx.tcx, cx.param_env).unwrap();
-        if !compute_size_skeleton(ty).same_size(compute_size_skeleton(field_ty)) {
-            bug!("improper_ctypes: Option nonnull optimization not applied?");
-        }
+        // FIXME: Fix for CHERI.
+        // let compute_size_skeleton = |t| SizeSkeleton::compute(t, cx.tcx, cx.param_env).unwrap();
+        // if !compute_size_skeleton(ty).same_size(compute_size_skeleton(field_ty)) {
+        //     bug!("improper_ctypes: Option nonnull optimization not applied?");
+        // }
 
         // Return the nullable type this Option-like enum can be safely represented with.
         let field_ty_abi = &cx.layout_of(field_ty).unwrap().abi;
@@ -1374,7 +1375,7 @@ impl<'tcx> LateLintPass<'tcx> for VariantSizeDifferences {
             debug!(
                 "enum `{}` is {} bytes large with layout:\n{:#?}",
                 t,
-                layout.size.bytes(),
+                layout.ty_size.bytes(),
                 layout
             );
 

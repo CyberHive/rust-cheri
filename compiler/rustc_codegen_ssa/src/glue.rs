@@ -16,9 +16,9 @@ pub fn size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let layout = bx.layout_of(t);
     debug!("size_and_align_of_dst(ty={}, info={:?}): layout: {:?}", t, info, layout);
     if !layout.is_unsized() {
-        let size = bx.const_usize(layout.size.bytes());
+        let ty_size = bx.const_usize(layout.ty_size.bytes());
         let align = bx.const_usize(layout.align.abi.bytes());
-        return (size, align);
+        return (ty_size, align);
     }
     match t.kind() {
         ty::Dynamic(..) => {
@@ -44,7 +44,7 @@ pub fn size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                 // (resulting in `mul nsw nuw` in LLVM IR), since we know that the multiplication
                 // cannot signed wrap, and that both operands are non-negative. But at the time of writing,
                 // `BuilderMethods` can't do this, and it doesn't seem to enable any further optimizations.
-                bx.unchecked_smul(info.unwrap(), bx.const_usize(unit.size.bytes())),
+                bx.unchecked_smul(info.unwrap(), bx.const_usize(unit.ty_size.bytes())),
                 bx.const_usize(unit.align.abi.bytes()),
             )
         }

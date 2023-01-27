@@ -140,7 +140,7 @@ where
         return;
     }
 
-    let total = arg.layout.size;
+    let total = arg.layout.ty_size;
     if total > in_registers_max {
         arg.make_indirect();
         return;
@@ -175,7 +175,7 @@ where
             if data.has_float {
                 // Structure { float, int, int } doesn't like to be handled like
                 // { float, long int }. Other way around it doesn't mind.
-                if data.last_offset < arg.layout.size
+                if data.last_offset < arg.layout.ty_size
                     && (data.last_offset.raw % 8) != 0
                     && data.prefix_index < data.prefix.len()
                 {
@@ -184,7 +184,7 @@ where
                     data.last_offset += Reg::i32().size;
                 }
 
-                let mut rest_size = arg.layout.size - data.last_offset;
+                let mut rest_size = arg.layout.ty_size - data.last_offset;
                 if (rest_size.raw % 8) != 0 && data.prefix_index < data.prefix.len() {
                     data.prefix[data.prefix_index] = Some(Reg::i32());
                     rest_size = rest_size - Reg::i32().size;

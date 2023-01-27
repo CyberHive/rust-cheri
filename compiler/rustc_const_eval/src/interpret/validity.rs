@@ -384,7 +384,7 @@ impl<'rt, 'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> ValidityVisitor<'rt, 'mir, '
             // for the purpose of validity, consider foreign types to have
             // alignment and size determined by the layout (size will be 0,
             // alignment should take attributes into account).
-            .unwrap_or_else(|| (place.layout.size, place.layout.align.abi));
+            .unwrap_or_else(|| (place.layout.ty_size, place.layout.align.abi));
         // Direct call to `check_ptr_access_align` checks alignment even on CTFE machines.
         try_validation!(
             self.ecx.check_ptr_access_align(
@@ -845,7 +845,7 @@ impl<'rt, 'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> ValueVisitor<'mir, 'tcx, M>
                 // This is the element type size.
                 let layout = self.ecx.layout_of(*tys)?;
                 // This is the size in bytes of the whole array. (This checks for overflow.)
-                let size = layout.size * len;
+                let size = layout.ty_size * len;
                 // If the size is 0, there is nothing to check.
                 // (`size` can only be 0 of `len` is 0, and empty arrays are always valid.)
                 if size == Size::ZERO {
@@ -887,7 +887,7 @@ impl<'rt, 'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> ValueVisitor<'mir, 'tcx, M>
                                 // element that byte belongs to so we can
                                 // provide an index.
                                 let i = usize::try_from(
-                                    access.uninit.start.bytes() / layout.size.bytes(),
+                                    access.uninit.start.bytes() / layout.ty_size.bytes(),
                                 )
                                 .unwrap();
                                 self.path.push(PathElem::ArrayElem(i));

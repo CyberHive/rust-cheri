@@ -67,7 +67,7 @@ pub(super) fn vtable_allocation_provider<'tcx>(
         .layout_of(ty::ParamEnv::reveal_all().and(ty))
         .expect("failed to build vtable representation");
     assert!(!layout.is_unsized(), "can't create a vtable for an unsized type");
-    let size = layout.size.bytes();
+    let ty_size = layout.ty_size.bytes();
     let align = layout.align.abi.bytes();
 
     // We are storing multiple pointers, so we need to be concerned with the type size of pointers
@@ -93,7 +93,7 @@ pub(super) fn vtable_allocation_provider<'tcx>(
                 let fn_ptr = Pointer::from(fn_alloc_id);
                 Scalar::from_pointer(fn_ptr, &tcx)
             }
-            VtblEntry::MetadataSize => Scalar::from_uint(size, ptr_size).into(),
+            VtblEntry::MetadataSize => Scalar::from_uint(ty_size, ptr_size).into(),
             VtblEntry::MetadataAlign => Scalar::from_uint(align, ptr_size).into(),
             VtblEntry::Vacant => continue,
             VtblEntry::Method(instance) => {

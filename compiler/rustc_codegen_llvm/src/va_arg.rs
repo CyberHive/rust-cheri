@@ -95,7 +95,7 @@ fn emit_ptr_va_arg<'ll, 'tcx>(
             dl.ptr_layout(Some(dl.alloca_address_space)).align,
         )
     } else {
-        (layout.llvm_type(bx.cx), layout.size, layout.align)
+        (layout.llvm_type(bx.cx), layout.ty_size, layout.align)
     };
     let (addr, addr_align) =
         emit_direct_ptr_va_arg(bx, list, llty, size, align.abi, slot_size, allow_higher_align);
@@ -132,12 +132,12 @@ fn emit_aapcs_va_arg<'ll, 'tcx>(
     let (reg_off, reg_top_index, slot_size) = if gr_type {
         let gr_offs =
             bx.struct_gep(va_list_ty, va_list_addr, va_list_layout.llvm_field_index(bx.cx, 3));
-        let nreg = (layout.size.bytes() + 7) / 8;
+        let nreg = (layout.ty_size.bytes() + 7) / 8;
         (gr_offs, va_list_layout.llvm_field_index(bx.cx, 1), nreg * 8)
     } else {
         let vr_off =
             bx.struct_gep(va_list_ty, va_list_addr, va_list_layout.llvm_field_index(bx.cx, 4));
-        let nreg = (layout.size.bytes() + 15) / 16;
+        let nreg = (layout.ty_size.bytes() + 15) / 16;
         (vr_off, va_list_layout.llvm_field_index(bx.cx, 2), nreg * 16)
     };
 
@@ -171,9 +171,9 @@ fn emit_aapcs_va_arg<'ll, 'tcx>(
 
     // reg_value = *(@top + reg_off_v);
     let mut reg_addr = bx.gep(bx.type_i8(), top, &[reg_off_v]);
-    if bx.tcx().sess.target.endian == Endian::Big && layout.size.bytes() != slot_size {
+    if bx.tcx().sess.target.endian == Endian::Big && layout.ty_size.bytes() != slot_size {
         // On big-endian systems the value is right-aligned in its slot.
-        let offset = bx.const_i32((slot_size - layout.size.bytes()) as i32);
+        let offset = bx.const_i32((slot_size - layout.ty_size.bytes()) as i32);
         reg_addr = bx.gep(bx.type_i8(), reg_addr, &[offset]);
     }
     let reg_type = layout.llvm_type(bx);

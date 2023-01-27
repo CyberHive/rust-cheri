@@ -51,10 +51,11 @@ fn dump_layout_of<'tcx>(tcx: TyCtxt<'tcx>, item_def_id: LocalDefId, attr: &Attri
                         });
                     }
 
+                    // TODO: Separate into ty_size and val_size?
                     sym::size => {
                         tcx.sess.emit_err(Size {
                             span: tcx.def_span(item_def_id.to_def_id()),
-                            size: format!("{:?}", ty_layout.size),
+                            size: format!("{:?}", ty_layout.ty_size),
                         });
                     }
 

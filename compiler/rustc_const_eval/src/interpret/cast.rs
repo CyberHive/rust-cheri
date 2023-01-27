@@ -182,13 +182,13 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
         assert!(cast_ty.is_unsafe_ptr());
         // Handle casting any ptr to raw ptr (might be a fat ptr).
         let dest_layout = self.layout_of(cast_ty)?;
-        if dest_layout.size == src.layout.size {
+        if dest_layout.ty_size == src.layout.ty_size {
             // Thin or fat pointer that just hast the ptr kind of target type changed.
             return Ok(**src);
         } else {
             // Casting the metadata away from a fat ptr.
-            assert_eq!(src.layout.size, 2 * self.pointer_ty_size());
-            assert_eq!(dest_layout.size, self.pointer_ty_size());
+            assert_eq!(src.layout.ty_size, 2 * self.pointer_ty_size());
+            assert_eq!(dest_layout.ty_size, self.pointer_ty_size());
             assert!(src.layout.ty.is_unsafe_ptr());
             return match **src {
                 Immediate::ScalarPair(data, _) => Ok(data.into()),
@@ -250,7 +250,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
         // Let's make sure v is sign-extended *if* it has a signed type.
         let signed = src_layout.abi.is_signed(); // Also asserts that abi is `Scalar`.
 
-        let v = scalar.to_bits(src_layout.size)?;
+        let v = scalar.to_bits(src_layout.ty_size)?;
         let v = if signed { self.sign_extend(v, src_layout) } else { v };
         trace!("cast_from_scalar: {}, {} -> {}", v, src_layout.ty, cast_ty);
 

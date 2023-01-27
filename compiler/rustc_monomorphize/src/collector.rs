@@ -880,7 +880,7 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirNeighborCollector<'a, 'tcx> {
         let ty = self.monomorphize(ty);
         let layout = self.tcx.layout_of(ty::ParamEnv::reveal_all().and(ty));
         if let Ok(layout) = layout {
-            if layout.size > limit {
+            if layout.val_size > limit {
                 debug!(?layout);
                 let source_info = self.body.source_info(location);
                 debug!(?source_info);
@@ -900,7 +900,7 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirNeighborCollector<'a, 'tcx> {
                     source_info.span,
                     LargeAssignmentsLint {
                         span: source_info.span,
-                        size: layout.size.bytes(),
+                        size: layout.val_size.bytes(),
                         limit: limit.bytes(),
                     },
                 )

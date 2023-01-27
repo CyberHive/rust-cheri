@@ -84,19 +84,19 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 if let OperandValue::Immediate(v) = cg_elem.val {
                     let zero = bx.const_usize(0);
                     let start = dest.project_index(&mut bx, zero).llval;
-                    let size = bx.const_usize(dest.layout.size.bytes());
+                    let ty_size = bx.const_usize(dest.layout.ty_size.bytes());
 
                     // Use llvm.memset.p0i8.* to initialize all zero arrays
                     if bx.cx().const_to_opt_u128(v, false) == Some(0) {
                         let fill = bx.cx().const_u8(0);
-                        bx.memset(start, fill, size, dest.align, MemFlags::empty());
+                        bx.memset(start, fill, ty_size, dest.align, MemFlags::empty());
                         return bx;
                     }
 
                     // Use llvm.memset.p0i8.* to initialize byte arrays
                     let v = bx.from_immediate(v);
                     if bx.cx().val_ty(v) == bx.cx().type_i8() {
-                        bx.memset(start, v, size, dest.align, MemFlags::empty());
+                        bx.memset(start, v, ty_size, dest.align, MemFlags::empty());
                         return bx;
                     }
                 }
@@ -465,7 +465,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 assert!(bx.cx().type_is_sized(ty));
                 let layout = bx.cx().layout_of(ty);
                 let val = match null_op {
-                    mir::NullOp::SizeOf => layout.size.bytes(),
+                    mir::NullOp::SizeOf => layout.ty_size.bytes(),
                     mir::NullOp::AlignOf => layout.align.abi.bytes(),
                 };
                 let val = bx.cx().const_usize(val);

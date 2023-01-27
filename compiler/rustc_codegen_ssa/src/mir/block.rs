@@ -187,7 +187,7 @@ impl<'a, 'tcx> TerminatorCodegenHelper<'tcx> {
                 bx.switch_to_block(fx.llbb(target));
                 fx.set_debug_loc(bx, self.terminator.source_info);
                 for tmp in copied_constant_arguments {
-                    bx.lifetime_end(tmp.llval, tmp.layout.size);
+                    bx.lifetime_end(tmp.llval, tmp.layout.ty_size);
                 }
                 fx.store_return(bx, ret_dest, &fn_abi.ret, invokeret);
             }
@@ -203,7 +203,7 @@ impl<'a, 'tcx> TerminatorCodegenHelper<'tcx> {
 
             if let Some((ret_dest, target)) = destination {
                 for tmp in copied_constant_arguments {
-                    bx.lifetime_end(tmp.llval, tmp.layout.size);
+                    bx.lifetime_end(tmp.llval, tmp.layout.ty_size);
                 }
                 fx.store_return(bx, ret_dest, &fn_abi.ret, llret);
                 self.funclet_br(fx, bx, target);
@@ -992,7 +992,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 (&mir::Operand::Copy(_), Ref(_, None, _))
                 | (&mir::Operand::Constant(_), Ref(_, None, _)) => {
                     let tmp = PlaceRef::alloca(&mut bx, op.layout);
-                    bx.lifetime_start(tmp.llval, tmp.layout.size);
+                    bx.lifetime_start(tmp.llval, tmp.layout.ty_size);
                     op.val.store(&mut bx, tmp);
                     op.val = Ref(tmp.llval, None, tmp.align);
                     copied_constant_arguments.push(tmp);
@@ -1720,12 +1720,34 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 if (src_scalar.primitive() == abi::Pointer)
                     == (dst_scalar.primitive() == abi::Pointer)
                 {
-                    assert_eq!(src.layout.size, dst.layout.size);
+                    assert_eq!(src.layout.ty_size, dst.layout.ty_size);
 
                     // NOTE(eddyb) the `from_immediate` and `to_immediate_scalar`
                     // conversions allow handling `bool`s the same as `u8`s.
                     let src = bx.from_immediate(src.immediate());
                     let src_as_dst = bx.bitcast(src, bx.backend_type(dst.layout));
+                    Immediate(bx.to_immediate_scalar(src_as_dst, dst_scalar)).store(bx, dst);
+                    return;
+                }
+                if src_scalar.primitive() != abi::Pointer && dst_scalar.primitive() == abi::Pointer {
+                    // We are generating an invalid pointer - IE with no provenance - with the
+                    // address set to the given scalar.
+                    assert_eq!(src_scalar.val_size(bx), dst_scalar.val_size(bx));
+
+                    // We need to basically set the address of a null pointer to be the src value.
+                    let src = bx.from_immediate(src.immediate());
+                    let new_dst = bx.const_null(bx.backend_type(dst.layout));
+                    let src_as_dst = bx.set_pointer_address(new_dst, src);
+                    Immediate(bx.to_immediate_scalar(src_as_dst, dst_scalar)).store(bx, dst);
+                    return;
+                }
+                if src_scalar.primitive() == abi::Pointer && dst_scalar.primitive() != abi::Pointer {
+                    // We are generating a non-pointer (IE usize) from a pointer. In which case we
+                    // can simply use get_pointer_address.
+                    assert_eq!(src_scalar.val_size(bx), dst_scalar.val_size(bx));
+
+                    let src = bx.from_immediate(src.immediate());
+                    let src_as_dst = bx.get_pointer_address(src);
                     Immediate(bx.to_immediate_scalar(src_as_dst, dst_scalar)).store(bx, dst);
                     return;
                 }

@@ -199,7 +199,7 @@ impl<'mir, 'tcx> ConstPropagator<'mir, 'tcx> {
             // I don't know how return types can seem to be unsized but this happens in the
             // `type/type-unsatisfiable.rs` test.
             .filter(|ret_layout| {
-                !ret_layout.is_unsized() && ret_layout.size < Size::from_bytes(MAX_ALLOC_LIMIT)
+                !ret_layout.is_unsized() && ret_layout.ty_size < Size::from_bytes(MAX_ALLOC_LIMIT)
             })
             .unwrap_or_else(|| ecx.layout_of(tcx.types.unit).unwrap());
 
@@ -381,8 +381,8 @@ impl<'mir, 'tcx> ConstPropagator<'mir, 'tcx> {
             // We need the type of the LHS. We cannot use `place_layout` as that is the type
             // of the result, which for checked binops is not the same!
             let left_ty = left.ty(self.local_decls, self.tcx);
-            let left_size = self.ecx.layout_of(left_ty).ok()?.size;
-            let right_size = r.layout.size;
+            let left_size = self.ecx.layout_of(left_ty).ok()?.ty_size;
+            let right_size = r.layout.ty_size;
             let r_bits = r.to_scalar().to_bits(right_size).ok();
             if r_bits.map_or(false, |b| b >= left_size.bits() as u128) {
                 debug!("check_binary_op: reporting assert for {:?}", source_info);

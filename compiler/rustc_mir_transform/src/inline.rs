@@ -738,7 +738,7 @@ fn type_size_of<'tcx>(
     param_env: ty::ParamEnv<'tcx>,
     ty: Ty<'tcx>,
 ) -> Option<u64> {
-    tcx.layout_of(param_env.and(ty)).ok().map(|layout| layout.size.bytes())
+    tcx.layout_of(param_env.and(ty)).ok().map(|layout| layout.ty_size.bytes())
 }
 
 /// Verify that the callee body is compatible with the caller.

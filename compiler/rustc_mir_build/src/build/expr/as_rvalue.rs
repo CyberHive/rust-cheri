@@ -223,7 +223,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                                     if signed {
                                         let scalar_size_extend = scalar.ty_size(&this.tcx).sign_extend(range);
                                         let discr_layout = this.tcx.layout_of(this.param_env.and(discr_ty));
-                                        let truncated_val = discr_layout.unwrap().size.truncate(scalar_size_extend);
+                                        let truncated_val = discr_layout.unwrap().ty_size.truncate(scalar_size_extend);
                                         range_val = ConstantKind::from_bits(
                                             this.tcx,
                                             truncated_val,
@@ -719,7 +719,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     // Helper to get a `-1` value of the appropriate type
     fn neg_1_literal(&mut self, span: Span, ty: Ty<'tcx>) -> Operand<'tcx> {
         let param_ty = ty::ParamEnv::empty().and(ty);
-        let size = self.tcx.layout_of(param_ty).unwrap().size;
+        let size = self.tcx.layout_of(param_ty).unwrap().ty_size;
         let literal = ConstantKind::from_bits(self.tcx, size.unsigned_int_max(), param_ty);
 
         self.literal_operand(span, literal)
@@ -729,7 +729,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     fn minval_literal(&mut self, span: Span, ty: Ty<'tcx>) -> Operand<'tcx> {
         assert!(ty.is_signed());
         let param_ty = ty::ParamEnv::empty().and(ty);
-        let bits = self.tcx.layout_of(param_ty).unwrap().size.bits();
+        let bits = self.tcx.layout_of(param_ty).unwrap().ty_size.bits();
         let n = 1 << (bits - 1);
         let literal = ConstantKind::from_bits(self.tcx, n, param_ty);
 

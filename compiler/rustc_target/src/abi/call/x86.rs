@@ -27,13 +27,13 @@ where
                 // According to Clang, everyone but MSVC returns single-element
                 // float aggregates directly in a floating-point register.
                 if !t.is_like_msvc && fn_abi.ret.layout.is_single_fp_element(cx) {
-                    match fn_abi.ret.layout.size.bytes() {
+                    match fn_abi.ret.layout.ty_size.bytes() {
                         4 => fn_abi.ret.cast_to(Reg::f32()),
                         8 => fn_abi.ret.cast_to(Reg::f64()),
                         _ => fn_abi.ret.make_indirect(),
                     }
                 } else {
-                    match fn_abi.ret.layout.size.bytes() {
+                    match fn_abi.ret.layout.ty_size.bytes() {
                         1 => fn_abi.ret.cast_to(Reg::i8()),
                         2 => fn_abi.ret.cast_to(Reg::i16()),
                         4 => fn_abi.ret.cast_to(Reg::i32()),
@@ -88,12 +88,12 @@ where
 
             // At this point we know this must be a primitive of sorts.
             let unit = arg.layout.homogeneous_aggregate(cx).unwrap().unit().unwrap();
-            assert_eq!(unit.size, arg.layout.size);
+            assert_eq!(unit.size, arg.layout.ty_size);
             if unit.kind == RegKind::Float {
                 continue;
             }
 
-            let size_in_regs = (arg.layout.size.bits() + 31) / 32;
+            let size_in_regs = (arg.layout.ty_size.bits() + 31) / 32;
 
             if size_in_regs == 0 {
                 continue;
@@ -105,7 +105,7 @@ where
 
             free_regs -= size_in_regs;
 
-            if arg.layout.size.bits() <= 32 && unit.kind == RegKind::Integer {
+            if arg.layout.ty_size.bits() <= 32 && unit.kind == RegKind::Integer {
                 attrs.set(ArgAttribute::InReg);
             }
 

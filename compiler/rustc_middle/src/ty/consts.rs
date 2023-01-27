@@ -169,11 +169,11 @@ impl<'tcx> Const<'tcx> {
     #[inline]
     /// Creates a constant with the given integer value and interns it.
     pub fn from_bits(tcx: TyCtxt<'tcx>, bits: u128, ty: ParamEnvAnd<'tcx, Ty<'tcx>>) -> Self {
-        let size = tcx
+        let ty_size = tcx
             .layout_of(ty)
             .unwrap_or_else(|e| panic!("could not compute layout for {:?}: {:?}", ty, e))
-            .size;
-        Self::from_scalar_int(tcx, ScalarInt::try_from_uint(bits, size).unwrap(), ty.value)
+            .ty_size;
+        Self::from_scalar_int(tcx, ScalarInt::try_from_uint(bits, ty_size).unwrap(), ty.value)
     }
 
     #[inline]
@@ -206,9 +206,9 @@ impl<'tcx> Const<'tcx> {
         ty: Ty<'tcx>,
     ) -> Option<u128> {
         assert_eq!(self.ty(), ty);
-        let size = tcx.layout_of(param_env.with_reveal_all_normalized(tcx).and(ty)).ok()?.size;
+        let ty_size = tcx.layout_of(param_env.with_reveal_all_normalized(tcx).and(ty)).ok()?.ty_size;
         // if `ty` does not depend on generic parameters, use an empty param_env
-        self.kind().eval(tcx, param_env).try_to_bits(size)
+        self.kind().eval(tcx, param_env).try_to_bits(ty_size)
     }
 
     #[inline]

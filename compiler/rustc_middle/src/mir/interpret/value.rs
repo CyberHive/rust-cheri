@@ -84,7 +84,7 @@ impl<'tcx> ConstValue<'tcx> {
         param_env: ParamEnv<'tcx>,
         ty: Ty<'tcx>,
     ) -> Option<u128> {
-        let size = tcx.layout_of(param_env.with_reveal_all_normalized(tcx).and(ty)).ok()?.size;
+        let size = tcx.layout_of(param_env.with_reveal_all_normalized(tcx).and(ty)).ok()?.ty_size;
         self.try_to_bits(size)
     }
 

@@ -215,21 +215,21 @@ impl<'tcx, Prov: Provenance> ImmTy<'tcx, Prov> {
 
     #[inline]
     pub fn try_from_uint(i: impl Into<u128>, layout: TyAndLayout<'tcx>) -> Option<Self> {
-        Some(Self::from_scalar(Scalar::try_from_uint(i, layout.size)?, layout))
+        Some(Self::from_scalar(Scalar::try_from_uint(i, layout.ty_size)?, layout))
     }
     #[inline]
     pub fn from_uint(i: impl Into<u128>, layout: TyAndLayout<'tcx>) -> Self {
-        Self::from_scalar(Scalar::from_uint(i, layout.size), layout)
+        Self::from_scalar(Scalar::from_uint(i, layout.ty_size), layout)
     }
 
     #[inline]
     pub fn try_from_int(i: impl Into<i128>, layout: TyAndLayout<'tcx>) -> Option<Self> {
-        Some(Self::from_scalar(Scalar::try_from_int(i, layout.size)?, layout))
+        Some(Self::from_scalar(Scalar::try_from_int(i, layout.ty_size)?, layout))
     }
 
     #[inline]
     pub fn from_int(i: impl Into<i128>, layout: TyAndLayout<'tcx>) -> Self {
-        Self::from_scalar(Scalar::from_int(i, layout.size), layout)
+        Self::from_scalar(Scalar::from_int(i, layout.ty_size), layout)
     }
 
     #[inline]
@@ -314,7 +314,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
             Abi::Scalar(abi::Scalar::Initialized { value: s, .. }) => {
                 let ty_size = s.ty_size(self);
                 let val_size = s.val_size(self);
-                assert_eq!(ty_size, mplace.layout.size, "abi::Scalar size does not match layout size");
+                assert_eq!(ty_size, mplace.layout.ty_size, "abi::Scalar size does not match layout size");
                 let scalar = alloc.read_scalar(
                     alloc_range(Size::ZERO, ty_size, val_size),
                     /*read_provenance*/ s.is_ptr(),
@@ -665,12 +665,12 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                     Some(discr) => {
                         // This type actually has discriminants.
                         assert_eq!(discr.ty, discr_layout.ty);
-                        Scalar::from_uint(discr.val, discr_layout.size)
+                        Scalar::from_uint(discr.val, discr_layout.ty_size)
                     }
                     None => {
                         // On a type without actual discriminants, variant is 0.
                         assert_eq!(index.as_u32(), 0);
-                        Scalar::from_uint(index.as_u32(), discr_layout.size)
+                        Scalar::from_uint(index.as_u32(), discr_layout.ty_size)
                     }
                 };
                 return Ok((discr, index));
@@ -694,7 +694,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
 
         // Read tag and sanity-check `tag_layout`.
         let tag_val = self.read_immediate(&self.operand_field(op, tag_field)?)?;
-        assert_eq!(tag_layout.size, tag_val.layout.size);
+        assert_eq!(tag_layout.val_size, tag_val.layout.val_size);
         assert_eq!(tag_layout.abi.is_signed(), tag_val.layout.abi.is_signed());
         trace!("tag value: {}", tag_val);
 
@@ -707,13 +707,13 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                 let tag_bits = scalar
                     .try_to_int()
                     .map_err(|dbg_val| err_ub!(InvalidTag(dbg_val)))?
-                    .assert_bits(tag_layout.size);
+                    .assert_bits(tag_layout.ty_size);
                 // Cast bits from tag layout to discriminant layout.
                 // After the checks we did above, this cannot fail, as
                 // discriminants are int-like.
                 let discr_val =
                     self.cast_from_int_like(scalar, tag_val.layout, discr_layout.ty).unwrap();
-                let discr_bits = discr_val.assert_bits(discr_layout.size);
+                let discr_bits = discr_val.assert_bits(discr_layout.ty_size);
                 // Convert discriminant to variant index, and catch invalid discriminants.
                 let index = match *op.layout.ty.kind() {
                     ty::Adt(adt, _) => {
@@ -727,7 +727,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                     }
                     _ => span_bug!(self.cur_span(), "tagged layout for non-adt non-generator"),
                 }
-                .ok_or_else(|| err_ub!(InvalidTag(Scalar::from_uint(tag_bits, tag_layout.size))))?;
+                .ok_or_else(|| err_ub!(InvalidTag(Scalar::from_uint(tag_bits, tag_layout.ty_size))))?;
                 // Return the cast value, and the index.
                 (discr_val, index.0)
             }
@@ -752,7 +752,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                         untagged_variant
                     }
                     Ok(tag_bits) => {
-                        let tag_bits = tag_bits.assert_bits(tag_layout.size);
+                        let tag_bits = tag_bits.assert_bits(tag_layout.ty_size);
                         // We need to use machine arithmetic to get the relative variant idx:
                         // variant_index_relative = tag_val - niche_start_val
                         let tag_val = ImmTy::from_uint(tag_bits, tag_layout);
@@ -760,7 +760,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                         let variant_index_relative_val =
                             self.binary_op(mir::BinOp::Sub, &tag_val, &niche_start_val)?;
                         let variant_index_relative =
-                            variant_index_relative_val.to_scalar().assert_bits(tag_val.layout.size);
+                            variant_index_relative_val.to_scalar().assert_bits(tag_val.layout.ty_size);
                         // Check if this is in the range that indicates an actual discriminant.
                         if variant_index_relative <= u128::from(variants_end - variants_start) {
                             let variant_index_relative = u32::try_from(variant_index_relative)
@@ -786,7 +786,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                 // Compute the size of the scalar we need to return.
                 // No need to cast, because the variant index directly serves as discriminant and is
                 // encoded in the tag.
-                (Scalar::from_uint(variant.as_u32(), discr_layout.size), variant)
+                (Scalar::from_uint(variant.as_u32(), discr_layout.ty_size), variant)
             }
         })
     }

@@ -103,7 +103,7 @@ where
             // the field contains no information, can be left uninit
             _ if field_layout.is_zst() => Immediate::Uninit,
             // the field covers the entire type
-            _ if field_layout.size == base.layout.size => {
+            _ if field_layout.ty_size == base.layout.ty_size => {
                 assert!(match (base.layout.abi, field_layout.abi) {
                     (Abi::Scalar(..), Abi::Scalar(..)) => true,
                     (Abi::ScalarPair(..), Abi::ScalarPair(..)) => true,
@@ -116,11 +116,11 @@ where
             (Immediate::ScalarPair(a_val, b_val), Abi::ScalarPair(a, b)) => {
                 assert!(matches!(field_layout.abi, Abi::Scalar(..)));
                 Immediate::from(if offset.bytes() == 0 {
-                    debug_assert_eq!(field_layout.size, a.ty_size(self));
+                    debug_assert_eq!(field_layout.ty_size, a.ty_size(self));
                     a_val
                 } else {
                     debug_assert_eq!(offset, a.ty_size(self).align_to(b.align(self).abi));
-                    debug_assert_eq!(field_layout.size, b.ty_size(self));
+                    debug_assert_eq!(field_layout.ty_size, b.ty_size(self));
                     b_val
                 })
             }

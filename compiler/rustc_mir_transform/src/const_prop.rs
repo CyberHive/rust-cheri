@@ -385,7 +385,7 @@ impl<'mir, 'tcx> ConstPropagator<'mir, 'tcx> {
             // I don't know how return types can seem to be unsized but this happens in the
             // `type/type-unsatisfiable.rs` test.
             .filter(|ret_layout| {
-                !ret_layout.is_unsized() && ret_layout.size < Size::from_bytes(MAX_ALLOC_LIMIT)
+                !ret_layout.is_unsized() && ret_layout.ty_size < Size::from_bytes(MAX_ALLOC_LIMIT)
             })
             .unwrap_or_else(|| ecx.layout_of(tcx.types.unit).unwrap());
 
@@ -518,8 +518,8 @@ impl<'mir, 'tcx> ConstPropagator<'mir, 'tcx> {
             // We need the type of the LHS. We cannot use `place_layout` as that is the type
             // of the result, which for checked binops is not the same!
             let left_ty = left.ty(self.local_decls, self.tcx);
-            let left_size = self.ecx.layout_of(left_ty).ok()?.size;
-            let right_size = r.layout.size;
+            let left_size = self.ecx.layout_of(left_ty).ok()?.ty_size;
+            let right_size = r.layout.ty_size;
             let r_bits = r.to_scalar().to_bits(right_size).ok();
             if r_bits.map_or(false, |b| b >= left_size.bits() as u128) {
                 return None;
@@ -672,13 +672,13 @@ impl<'mir, 'tcx> ConstPropagator<'mir, 'tcx> {
                     throw_machine_stop_str!("cannot optimize this")
                 }
 
-                let arg_value = const_arg.to_scalar().to_bits(const_arg.layout.size)?;
+                let arg_value = const_arg.to_scalar().to_bits(const_arg.layout.ty_size)?;
                 let dest = this.ecx.eval_place(place)?;
 
                 match op {
                     BinOp::BitAnd if arg_value == 0 => this.ecx.write_immediate(*const_arg, &dest),
                     BinOp::BitOr
-                        if arg_value == const_arg.layout.size.truncate(u128::MAX)
+                        if arg_value == const_arg.layout.ty_size.truncate(u128::MAX)
                             || (const_arg.layout.ty.is_bool() && arg_value == 1) =>
                     {
                         this.ecx.write_immediate(*const_arg, &dest)
@@ -855,7 +855,7 @@ impl CanConstProp {
         for (local, val) in cpv.can_const_prop.iter_enumerated_mut() {
             let ty = body.local_decls[local].ty;
             match tcx.layout_of(param_env.and(ty)) {
-                Ok(layout) if layout.size < Size::from_bytes(MAX_ALLOC_LIMIT) => {}
+                Ok(layout) if layout.ty_size < Size::from_bytes(MAX_ALLOC_LIMIT) => {}
                 // Either the layout fails to compute, then we can't use this local anyway
                 // or the local is too large, then we don't want to.
                 _ => {

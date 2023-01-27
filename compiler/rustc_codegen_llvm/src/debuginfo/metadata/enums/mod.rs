@@ -288,7 +288,7 @@ fn build_enum_variant_struct_type_di_node<'ll, 'tcx>(
                         cx,
                         struct_type_di_node,
                         &field_name,
-                        (field_layout.size, field_layout.align.abi),
+                        (field_layout.ty_size, field_layout.align.abi),
                         variant_layout.fields.offset(field_index),
                         DIFlags::FlagZero,
                         type_di_node(cx, field_layout.ty),

@@ -275,7 +275,7 @@ impl<'tcx> SizeSkeleton<'tcx> {
         // First try computing a static layout.
         let err = match tcx.layout_of(param_env.and(ty)) {
             Ok(layout) => {
-                return Ok(SizeSkeleton::Known(layout.size));
+                return Ok(SizeSkeleton::Known(layout.val_size));
             }
             Err(err) => err,
         };
@@ -613,7 +613,8 @@ where
                     abi: Abi::Uninhabited,
                     largest_niche: None,
                     align: tcx.data_layout.i8_align,
-                    size: Size::ZERO,
+                    ty_size: Size::ZERO,
+                    val_size: Size::ZERO,
                 })
             }
 
@@ -814,7 +815,7 @@ where
         let pointee_info = match *this.ty.kind() {
             ty::RawPtr(mt) if offset.bytes() == 0 => {
                 tcx.layout_of(param_env.and(mt.ty)).ok().map(|layout| PointeeInfo {
-                    size: layout.size,
+                    size: layout.ty_size,
                     align: layout.align.abi,
                     safe: None,
                     address_space: addr_space_of_ty(mt.ty),
@@ -822,7 +823,7 @@ where
             }
             ty::FnPtr(fn_sig) if offset.bytes() == 0 => {
                 tcx.layout_of(param_env.and(tcx.mk_fn_ptr(fn_sig))).ok().map(|layout| PointeeInfo {
-                    size: layout.size,
+                    size: layout.ty_size,
                     align: layout.align.abi,
                     safe: None,
                     address_space: cx.data_layout().instruction_address_space,
@@ -859,7 +860,7 @@ where
                 };
 
                 tcx.layout_of(param_env.and(ty)).ok().map(|layout| PointeeInfo {
-                    size: layout.size,
+                    size: layout.ty_size,
                     align: layout.align.abi,
                     safe: Some(kind),
                     address_space,
@@ -905,7 +906,7 @@ where
                         if field_start <= offset {
                             let field = variant.field(cx, i);
                             result = field.to_result().ok().and_then(|field| {
-                                if ptr_end <= field_start + field.size {
+                                if ptr_end <= field_start + field.ty_size {
                                     // We found the right field, look inside it.
                                     let field_info =
                                         field.pointee_info_at(cx, offset - field_start);

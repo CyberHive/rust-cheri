@@ -1797,7 +1797,7 @@ impl<'tcx> Operand<'tcx> {
             let type_size = tcx
                 .layout_of(param_env_and_ty)
                 .unwrap_or_else(|e| panic!("could not compute layout for {:?}: {:?}", ty, e))
-                .size;
+                .ty_size;
             let scalar_size = match val {
                 Scalar::Int(int) => int.size(),
                 _ => panic!("Invalid scalar type {:?}", val),
@@ -2217,7 +2217,7 @@ impl<'tcx> ConstantKind<'tcx> {
             Self::Val(val, t) => {
                 assert_eq!(*t, ty);
                 let size =
-                    tcx.layout_of(param_env.with_reveal_all_normalized(tcx).and(ty)).ok()?.size;
+                    tcx.layout_of(param_env.with_reveal_all_normalized(tcx).and(ty)).ok()?.ty_size;
                 val.try_to_bits(size)
             }
             Self::Unevaluated(uneval, ty) => {
@@ -2226,7 +2226,7 @@ impl<'tcx> ConstantKind<'tcx> {
                         let size = tcx
                             .layout_of(param_env.with_reveal_all_normalized(tcx).and(*ty))
                             .ok()?
-                            .size;
+                            .ty_size;
                         val.try_to_bits(size)
                     }
                     Err(_) => None,
@@ -2273,13 +2273,13 @@ impl<'tcx> ConstantKind<'tcx> {
         bits: u128,
         param_env_ty: ty::ParamEnvAnd<'tcx, Ty<'tcx>>,
     ) -> Self {
-        let size = tcx
+        let val_size = tcx
             .layout_of(param_env_ty)
             .unwrap_or_else(|e| {
                 bug!("could not compute layout for {:?}: {:?}", param_env_ty.value, e)
             })
-            .size;
-        let cv = ConstValue::Scalar(Scalar::from_uint(bits, size));
+            .val_size;
+        let cv = ConstValue::Scalar(Scalar::from_uint(bits, val_size));
 
         Self::Val(cv, param_env_ty.value)
     }

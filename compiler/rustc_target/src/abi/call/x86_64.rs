@@ -78,7 +78,7 @@ where
 
         // Fill in `cls` for scalars (Int/Sse) and vectors (Sse).
         let first = (off.bytes() / 8) as usize;
-        let last = ((off.bytes() + layout.size.bytes() - 1) / 8) as usize;
+        let last = ((off.bytes() + layout.ty_size.bytes() - 1) / 8) as usize;
         for cls in &mut cls[first..=last] {
             *cls = Some(cls.map_or(c, |old| old.min(c)));
 
@@ -92,7 +92,7 @@ where
         Ok(())
     }
 
-    let n = ((arg.layout.size.bytes() + 7) / 8) as usize;
+    let n = ((arg.layout.ty_size.bytes() + 7) / 8) as usize;
     if n > MAX_EIGHTBYTES {
         return Err(Memory);
     }
@@ -226,8 +226,8 @@ where
             Ok(ref cls) => {
                 // split into sized chunks passed individually
                 if arg.layout.is_aggregate() {
-                    let size = arg.layout.size;
-                    arg.cast_to(cast_target(cls, size))
+                    let ty_size = arg.layout.ty_size;
+                    arg.cast_to(cast_target(cls, ty_size))
                 } else {
                     arg.extend_integer_width_to(32);
                 }

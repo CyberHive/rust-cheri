@@ -28,7 +28,7 @@ pub fn const_alloc_to_llvm<'ll>(cx: &CodegenCx<'ll, '_>, alloc: ConstAllocation<
     let dl = cx.data_layout();
 
     // TODO: More complexity needed here. val_size vs ty_size.
-    let pointer_size = dl.ptr_layout(None).val_size.bytes() as usize;
+    let pointer_size = dl.ptr_layout(None).ty_size.bytes() as usize;
 
     // Note: this function may call `inspect_with_uninit_and_ptr_outside_interpreter`, so `range`
     // must be within the bounds of `alloc` and not contain or overlap a pointer provenance.

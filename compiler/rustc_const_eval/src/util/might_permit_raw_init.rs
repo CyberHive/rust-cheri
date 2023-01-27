@@ -113,7 +113,7 @@ fn might_permit_raw_init_lax<'tcx>(
             // 0x01-filling is not aligned.
             return false;
         }
-        if pointee.size.bytes() > 0 {
+        if pointee.ty_size.bytes() > 0 {
             // A 'fake' integer pointer is not sufficiently dereferenceable.
             return false;
         }

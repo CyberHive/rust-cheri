@@ -71,7 +71,7 @@ fn uncached_llvm_type<'a, 'tcx>(
 
     match layout.fields {
         FieldsShape::Primitive | FieldsShape::Union(_) => {
-            let fill = cx.type_padding_filler(layout.size, layout.align.abi);
+            let fill = cx.type_padding_filler(layout.ty_size, layout.align.abi);
             let packed = false;
             match name {
                 None => cx.type_struct(&[fill], packed),
@@ -136,26 +136,26 @@ fn struct_llfields<'a, 'tcx>(
         }
         field_remapping[i] = result.len() as u32;
         result.push(field.llvm_type(cx));
-        offset = target_offset + field.size;
+        offset = target_offset + field.ty_size;
         prev_effective_align = effective_field_align;
     }
     let padding_used = result.len() > field_count;
     if !layout.is_unsized() && field_count > 0 {
-        if offset > layout.size {
-            bug!("layout: {:#?} stride: {:?} offset: {:?}", layout, layout.size, offset);
+        if offset > layout.ty_size {
+            bug!("layout: {:#?} stride: {:?} offset: {:?}", layout, layout.ty_size, offset);
         }
-        let padding = layout.size - offset;
+        let padding = layout.ty_size - offset;
         if padding != Size::ZERO {
             let padding_align = prev_effective_align;
-            assert_eq!(offset.align_to(padding_align) + padding, layout.size);
+            assert_eq!(offset.align_to(padding_align) + padding, layout.ty_size);
             debug!(
                 "struct_llfields: pad_bytes: {:?} offset: {:?} stride: {:?}",
-                padding, offset, layout.size
+                padding, offset, layout.ty_size
             );
             result.push(cx.type_padding_filler(padding, padding_align));
         }
     } else {
-        debug!("struct_llfields: offset: {:?} stride: {:?}", offset, layout.size);
+        debug!("struct_llfields: offset: {:?} stride: {:?}", offset, layout.ty_size);
     }
     let field_remapping = if padding_used { Some(field_remapping) } else { None };
     (result, packed, field_remapping)
@@ -167,12 +167,12 @@ impl<'a, 'tcx> CodegenCx<'a, 'tcx> {
     }
 
     pub fn size_of(&self, ty: Ty<'tcx>) -> Size {
-        self.layout_of(ty).size
+        self.layout_of(ty).ty_size
     }
 
     pub fn size_and_align_of(&self, ty: Ty<'tcx>) -> (Size, Align) {
         let layout = self.layout_of(ty);
-        (layout.size, layout.align.abi)
+        (layout.ty_size, layout.align.abi)
     }
 }
 

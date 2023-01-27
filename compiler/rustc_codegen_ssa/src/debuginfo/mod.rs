@@ -21,7 +21,7 @@ pub fn wants_c_like_enum_debuginfo<'tcx>(enum_type_and_layout: TyAndLayout<'tcx>
                 0 => false,
                 1 => {
                     // Univariant enums unless they are zero-sized
-                    enum_type_and_layout.size != Size::ZERO && adt_def.all_fields().count() == 0
+                    enum_type_and_layout.ty_size != Size::ZERO && adt_def.all_fields().count() == 0
                 }
                 _ => {
                     // Enums with more than one variant if they have no fields

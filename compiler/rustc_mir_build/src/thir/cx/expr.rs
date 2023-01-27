@@ -224,14 +224,14 @@ impl<'tcx> Cx<'tcx> {
             let discr_ty = ty.to_ty(tcx);
 
             let param_env_ty = self.param_env.and(discr_ty);
-            let size = tcx
+            let ty_size = tcx
                 .layout_of(param_env_ty)
                 .unwrap_or_else(|e| {
                     panic!("could not compute layout for {:?}: {:?}", param_env_ty, e)
                 })
-                .size;
+                .ty_size;
 
-            let lit = ScalarInt::try_from_uint(discr_offset as u128, size).unwrap();
+            let lit = ScalarInt::try_from_uint(discr_offset as u128, ty_size).unwrap();
             let kind = ExprKind::NonHirLiteral { lit, user_ty: None };
             let offset = self.thir.exprs.push(Expr { temp_lifetime, ty: discr_ty, span, kind });
 

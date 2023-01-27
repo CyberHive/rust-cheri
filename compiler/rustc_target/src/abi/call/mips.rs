@@ -18,17 +18,17 @@ where
     C: HasDataLayout,
 {
     let dl = cx.data_layout();
-    let size = arg.layout.size;
+    let ty_size = arg.layout.ty_size;
     let align = arg.layout.align.max(dl.i32_align).min(dl.i64_align).abi;
 
     if arg.layout.is_aggregate() {
         let pad_i32 = !offset.is_aligned(align);
-        arg.cast_to_and_pad_i32(Uniform { unit: Reg::i32(), total: size }, pad_i32);
+        arg.cast_to_and_pad_i32(Uniform { unit: Reg::i32(), total: ty_size }, pad_i32);
     } else {
         arg.extend_integer_width_to(32);
     }
 
-    *offset = offset.align_to(align) + size.align_to(align);
+    *offset = offset.align_to(align) + ty_size.align_to(align);
 }
 
 pub fn compute_abi_info<Ty, C>(cx: &C, fn_abi: &mut FnAbi<'_, Ty>)

@@ -39,12 +39,12 @@ pub(crate) fn dump_closure_profile<'tcx>(tcx: TyCtxt<'tcx>, closure_instance: In
 
         let new_size = tcx
             .layout_of(param_env.and(after_feature_tys))
-            .map(|l| format!("{:?}", l.size.bytes()))
+            .map(|l| format!("{:?}", l.ty_size.bytes()))
             .unwrap_or_else(|e| format!("Failed {:?}", e));
 
         let old_size = tcx
             .layout_of(param_env.and(before_feature_tys))
-            .map(|l| format!("{:?}", l.size.bytes()))
+            .map(|l| format!("{:?}", l.ty_size.bytes()))
             .unwrap_or_else(|e| format!("Failed {:?}", e));
 
         let closure_span = tcx.def_span(closure_def_id);

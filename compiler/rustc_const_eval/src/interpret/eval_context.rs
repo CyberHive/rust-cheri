@@ -458,12 +458,12 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
     #[inline(always)]
     pub fn sign_extend(&self, value: u128, ty: TyAndLayout<'_>) -> u128 {
         assert!(ty.abi.is_signed());
-        ty.size.sign_extend(value)
+        ty.val_size.sign_extend(value)
     }
 
     #[inline(always)]
     pub fn truncate(&self, value: u128, ty: TyAndLayout<'_>) -> u128 {
-        ty.size.truncate(value)
+        ty.val_size.truncate(value)
     }
 
     #[inline]
@@ -573,7 +573,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
         layout: &TyAndLayout<'tcx>,
     ) -> InterpResult<'tcx, Option<(Size, Align)>> {
         if !layout.is_unsized() {
-            return Ok(Some((layout.size, layout.align.abi)));
+            return Ok(Some((layout.ty_size, layout.align.abi)));
         }
         match layout.ty.kind() {
             ty::Adt(..) | ty::Tuple(..) => {
@@ -646,7 +646,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                 let elem = layout.field(self, 0);
 
                 // Make sure the slice is not too big.
-                let size = elem.size.bytes().saturating_mul(len); // we rely on `max_size_of_val` being smaller than `u64::MAX`.
+                let size = elem.ty_size.bytes().saturating_mul(len); // we rely on `max_size_of_val` being smaller than `u64::MAX`.
                 let size = Size::from_bytes(size);
                 if size > self.max_size_of_val() {
                     throw_ub!(InvalidMeta("slice is bigger than largest supported object"));

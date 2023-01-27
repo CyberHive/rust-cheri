@@ -579,7 +579,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         header_bx.cond_br(keep_going, body_bb, next_bb);
 
         let mut body_bx = Self::build(self.cx, body_bb);
-        let align = dest.align.restrict_for_offset(dest.layout.field(self.cx(), 0).size);
+        let align = dest.align.restrict_for_offset(dest.layout.field(self.cx(), 0).ty_size);
         cg_elem
             .val
             .store(&mut body_bx, PlaceRef::new_sized_aligned(current, cg_elem.layout, align));

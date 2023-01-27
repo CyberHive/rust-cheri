@@ -151,7 +151,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
 
         // Shift ops can have an RHS with a different numeric type.
         if bin_op == Shl || bin_op == Shr {
-            let size = u128::from(left_layout.size.bits());
+            let ty_size = u128::from(left_layout.ty_size.bits());
             // Even if `r` is signed, we treat it as if it was unsigned (i.e., we use its
             // zero-extended form). This matches the codegen backend:
             // <https://github.com/rust-lang/rust/blob/c274e4969f058b1c644243181ece9f829efa7594/compiler/rustc_codegen_ssa/src/base.rs#L315-L317>.
@@ -164,14 +164,14 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
             // the first shifts by 255, the latter by u16::MAX % 512 = 511. Lucky enough, our
             // integers are maximally 128bits wide, so negative shifts *always* overflow and we have
             // consistent results for the same value represented at different bit widths.
-            assert!(size <= 128);
-            let overflow = r >= size;
+            assert!(ty_size <= 128);
+            let overflow = r >= ty_size;
             // The shift offset is implicitly masked to the type size, to make sure this operation
             // is always defined. This is the one MIR operator that does *not* directly map to a
             // single LLVM operation. See
             // <https://github.com/rust-lang/rust/blob/c274e4969f058b1c644243181ece9f829efa7594/compiler/rustc_codegen_ssa/src/common.rs#L131-L158>
             // for the corresponding truncation in our codegen backends.
-            let r = r % size;
+            let r = r % ty_size;
             let r = u32::try_from(r).unwrap(); // we masked so this will always fit
             let result = if left_layout.abi.is_signed() {
                 let l = self.sign_extend(l, left_layout) as i128;
@@ -189,7 +189,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                 }
             };
             let truncated = self.truncate(result, left_layout);
-            return Ok((Scalar::from_uint(truncated, left_layout.size), overflow, left_layout.ty));
+            return Ok((Scalar::from_uint(truncated, left_layout.ty_size), overflow, left_layout.ty));
         }
 
         // For the remaining ops, the types must be the same on both sides
@@ -205,7 +205,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
             )
         }
 
-        let size = left_layout.size;
+        let ty_size = left_layout.ty_size;
 
         // Operations that need special treatment for signed integers
         if left_layout.abi.is_signed() {
@@ -238,7 +238,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                 // We need a special check for overflowing Rem and Div since they are *UB*
                 // on overflow, which can happen with "int_min $OP -1".
                 if matches!(bin_op, Rem | Div) {
-                    if l == size.signed_int_min() && r == -1 {
+                    if l == ty_size.signed_int_min() && r == -1 {
                         if bin_op == Rem {
                             throw_ub!(RemainderOverflow)
                         } else {
@@ -253,7 +253,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                 let result = result as u128;
                 let truncated = self.truncate(result, left_layout);
                 return Ok((
-                    Scalar::from_uint(truncated, size),
+                    Scalar::from_uint(truncated, ty_size),
                     oflo || self.sign_extend(truncated, left_layout) != result,
                     left_layout.ty,
                 ));
@@ -269,9 +269,9 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
             Gt => (Scalar::from_bool(l > r), self.tcx.types.bool),
             Ge => (Scalar::from_bool(l >= r), self.tcx.types.bool),
 
-            BitOr => (Scalar::from_uint(l | r, size), left_layout.ty),
-            BitAnd => (Scalar::from_uint(l & r, size), left_layout.ty),
-            BitXor => (Scalar::from_uint(l ^ r, size), left_layout.ty),
+            BitOr => (Scalar::from_uint(l | r, ty_size), left_layout.ty),
+            BitAnd => (Scalar::from_uint(l & r, ty_size), left_layout.ty),
+            BitXor => (Scalar::from_uint(l ^ r, ty_size), left_layout.ty),
 
             Add | Sub | Mul | Rem | Div => {
                 assert!(!left_layout.abi.is_signed());
@@ -290,7 +290,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                 // If that truncation loses any information, we have an overflow.
                 let truncated = self.truncate(result, left_layout);
                 return Ok((
-                    Scalar::from_uint(truncated, size),
+                    Scalar::from_uint(truncated, ty_size),
                     oflo || truncated != result,
                     left_layout.ty,
                 ));
@@ -363,8 +363,8 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                     right.layout.ty
                 );
 
-                let l = left.to_scalar().to_bits(left.layout.size)?;
-                let r = right.to_scalar().to_bits(right.layout.size)?;
+                let l = left.to_scalar().to_bits(left.layout.ty_size)?;
+                let r = right.to_scalar().to_bits(right.layout.ty_size)?;
                 self.binary_int_op(bin_op, l, left.layout, r, right.layout)
             }
             _ if left.layout.ty.is_any_ptr() => {
@@ -432,7 +432,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
             }
             _ => {
                 assert!(layout.ty.is_integral());
-                let val = val.to_bits(layout.size)?;
+                let val = val.to_bits(layout.ty_size)?;
                 let (res, overflow) = match un_op {
                     Not => (self.truncate(!val, layout), false), // bitwise negation, then truncate
                     Neg => {
@@ -447,7 +447,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                         (truncated, overflow || self.sign_extend(truncated, layout) != res)
                     }
                 };
-                Ok((Scalar::from_uint(res, layout.size), overflow, layout.ty))
+                Ok((Scalar::from_uint(res, layout.ty_size), overflow, layout.ty))
             }
         }
     }

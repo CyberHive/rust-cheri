@@ -352,14 +352,14 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
                     abi::Int(..) | abi::Pointer => RegKind::Integer,
                     abi::F32 | abi::F64 => RegKind::Float,
                 };
-                Ok(HomogeneousAggregate::Homogeneous(Reg { kind, size: self.size }))
+                Ok(HomogeneousAggregate::Homogeneous(Reg { kind, size: self.ty_size }))
             }
 
             Abi::Vector { .. } => {
                 assert!(!self.is_zst());
                 Ok(HomogeneousAggregate::Homogeneous(Reg {
                     kind: RegKind::Vector,
-                    size: self.size,
+                    size: self.ty_size,
                 }))
             }
 
@@ -382,7 +382,7 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
                                 } else {
                                     HomogeneousAggregate::NoData
                                 };
-                                return Ok((result, layout.size));
+                                return Ok((result, layout.ty_size));
                             }
                             FieldsShape::Union(_) => true,
                             FieldsShape::Arbitrary { .. } => false,
@@ -401,11 +401,11 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
                             result = result.merge(field.homogeneous_aggregate(cx)?)?;
 
                             // Keep track of the offset (without padding).
-                            let size = field.size;
+                            let ty_size = field.ty_size;
                             if is_union {
-                                total = total.max(size);
+                                total = total.max(ty_size);
                             } else {
-                                total += size;
+                                total += ty_size;
                             }
                         }
 
@@ -441,7 +441,7 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
                 }
 
                 // There needs to be no padding.
-                if total != self.size {
+                if total != self.ty_size {
                     Err(Heterogeneous)
                 } else {
                     match result {
@@ -497,7 +497,7 @@ impl<'a, Ty> ArgAbi<'a, Ty> {
             .set(ArgAttribute::NoCapture)
             .set(ArgAttribute::NonNull)
             .set(ArgAttribute::NoUndef);
-        attrs.pointee_size = layout.size;
+        attrs.pointee_size = layout.ty_size;
         // FIXME(eddyb) We should be doing this, but at least on
         // i686-pc-windows-msvc, it results in wrong stack offsets.
         // attrs.pointee_align = Some(layout.align.abi);

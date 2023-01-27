@@ -235,7 +235,7 @@ impl<'ll, 'tcx> ConstMethods<'tcx> for CodegenCx<'ll, 'tcx> {
     }
 
     fn scalar_to_backend(&self, cv: Scalar, layout: abi::Scalar, llty: &'ll Type) -> &'ll Value {
-        let bitsize = if layout.is_bool() { 1 } else { layout.ty_size(self).bits() };
+        let bitsize = if layout.is_bool() { 1 } else { layout.val_size(self).bits() };
         match cv {
             Scalar::Int(int) => {
                 let data = int.assert_bits(layout.ty_size(self));
@@ -313,7 +313,7 @@ impl<'ll, 'tcx> ConstMethods<'tcx> for CodegenCx<'ll, 'tcx> {
         assert_eq!(alloc_align, layout.align.abi);
         // TODO: Get the correct address space.
         let llty = self.type_ptr_to_ext(layout.llvm_type(self), dl.default_address_space);
-        let llval = if layout.size == Size::ZERO {
+        let llval = if layout.ty_size == Size::ZERO {
             let llval = self.const_usize(alloc_align.bytes());
             unsafe { llvm::LLVMConstIntToPtr(llval, llty) }
         } else {

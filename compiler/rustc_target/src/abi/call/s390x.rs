@@ -5,7 +5,7 @@ use crate::abi::call::{ArgAbi, FnAbi, Reg};
 use crate::abi::{HasDataLayout, TyAbiInterface};
 
 fn classify_ret<Ty>(ret: &mut ArgAbi<'_, Ty>) {
-    if !ret.layout.is_aggregate() && ret.layout.size.bits() <= 64 {
+    if !ret.layout.is_aggregate() && ret.layout.ty_size.bits() <= 64 {
         ret.extend_integer_width_to(64);
     } else {
         ret.make_indirect();
@@ -17,19 +17,19 @@ where
     Ty: TyAbiInterface<'a, C> + Copy,
     C: HasDataLayout,
 {
-    if !arg.layout.is_aggregate() && arg.layout.size.bits() <= 64 {
+    if !arg.layout.is_aggregate() && arg.layout.ty_size.bits() <= 64 {
         arg.extend_integer_width_to(64);
         return;
     }
 
     if arg.layout.is_single_fp_element(cx) {
-        match arg.layout.size.bytes() {
+        match arg.layout.ty_size.bytes() {
             4 => arg.cast_to(Reg::f32()),
             8 => arg.cast_to(Reg::f64()),
             _ => arg.make_indirect(),
         }
     } else {
-        match arg.layout.size.bytes() {
+        match arg.layout.ty_size.bytes() {
             1 => arg.cast_to(Reg::i8()),
             2 => arg.cast_to(Reg::i16()),
             4 => arg.cast_to(Reg::i32()),

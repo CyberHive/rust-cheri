@@ -525,7 +525,7 @@ fn reg_to_llvm(reg: InlineAsmRegOrRegClass, layout: Option<&TyAndLayout<'_>>) ->
         InlineAsmRegOrRegClass::Reg(reg) => {
             if let Some(idx) = xmm_reg_index(reg) {
                 let class = if let Some(layout) = layout {
-                    match layout.size.bytes() {
+                    match layout.ty_size.bytes() {
                         64 => 'z',
                         32 => 'y',
                         _ => 'x',
@@ -537,7 +537,7 @@ fn reg_to_llvm(reg: InlineAsmRegOrRegClass, layout: Option<&TyAndLayout<'_>>) ->
                 format!("{{{}mm{}}}", class, idx)
             } else if let Some(idx) = a64_vreg_index(reg) {
                 let class = if let Some(layout) = layout {
-                    match layout.size.bytes() {
+                    match layout.ty_size.bytes() {
                         16 => 'q',
                         8 => 'd',
                         4 => 's',
@@ -828,7 +828,7 @@ fn llvm_fixup_input<'ll, 'tcx>(
         }
         (InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::vreg_low16), Abi::Scalar(s)) => {
             let elem_ty = llvm_asm_scalar_type(bx.cx, s);
-            let count = 16 / layout.size.bytes();
+            let count = 16 / layout.ty_size.bytes();
             let vec_ty = bx.cx.type_vector(elem_ty, count);
             if let Primitive::Pointer = s.primitive() {
                 value = bx.get_pointer_address(value);
@@ -838,7 +838,7 @@ fn llvm_fixup_input<'ll, 'tcx>(
         (
             InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::vreg_low16),
             Abi::Vector { element, count },
-        ) if layout.size.bytes() == 8 => {
+        ) if layout.ty_size.bytes() == 8 => {
             let elem_ty = llvm_asm_scalar_type(bx.cx, element);
             let vec_ty = bx.cx.type_vector(elem_ty, count);
             let indices: Vec<_> = (0..count * 2).map(|x| bx.const_i32(x as i32)).collect();
@@ -852,7 +852,7 @@ fn llvm_fixup_input<'ll, 'tcx>(
         (
             InlineAsmRegClass::X86(X86InlineAsmRegClass::xmm_reg | X86InlineAsmRegClass::zmm_reg),
             Abi::Vector { .. },
-        ) if layout.size.bytes() == 64 => bx.bitcast(value, bx.cx.type_vector(bx.cx.type_f64(), 8)),
+        ) if layout.ty_size.bytes() == 64 => bx.bitcast(value, bx.cx.type_vector(bx.cx.type_f64(), 8)),
         (
             InlineAsmRegClass::Arm(ArmInlineAsmRegClass::sreg | ArmInlineAsmRegClass::sreg_low16),
             Abi::Scalar(s),
@@ -916,7 +916,7 @@ fn llvm_fixup_output<'ll, 'tcx>(
         (
             InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::vreg_low16),
             Abi::Vector { element, count },
-        ) if layout.size.bytes() == 8 => {
+        ) if layout.ty_size.bytes() == 8 => {
             let elem_ty = llvm_asm_scalar_type(bx.cx, element);
             let vec_ty = bx.cx.type_vector(elem_ty, count * 2);
             let indices: Vec<_> = (0..count).map(|x| bx.const_i32(x as i32)).collect();
@@ -930,7 +930,7 @@ fn llvm_fixup_output<'ll, 'tcx>(
         (
             InlineAsmRegClass::X86(X86InlineAsmRegClass::xmm_reg | X86InlineAsmRegClass::zmm_reg),
             Abi::Vector { .. },
-        ) if layout.size.bytes() == 64 => bx.bitcast(value, layout.llvm_type(bx.cx)),
+        ) if layout.ty_size.bytes() == 64 => bx.bitcast(value, layout.llvm_type(bx.cx)),
         (
             InlineAsmRegClass::Arm(ArmInlineAsmRegClass::sreg | ArmInlineAsmRegClass::sreg_low16),
             Abi::Scalar(s),
@@ -985,13 +985,13 @@ fn llvm_fixup_output_type<'ll, 'tcx>(
         }
         (InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::vreg_low16), Abi::Scalar(s)) => {
             let elem_ty = llvm_asm_scalar_type(cx, s);
-            let count = 16 / layout.size.bytes();
+            let count = 16 / layout.ty_size.bytes();
             cx.type_vector(elem_ty, count)
         }
         (
             InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::vreg_low16),
             Abi::Vector { element, count },
-        ) if layout.size.bytes() == 8 => {
+        ) if layout.ty_size.bytes() == 8 => {
             let elem_ty = llvm_asm_scalar_type(cx, element);
             cx.type_vector(elem_ty, count * 2)
         }
@@ -1003,7 +1003,7 @@ fn llvm_fixup_output_type<'ll, 'tcx>(
         (
             InlineAsmRegClass::X86(X86InlineAsmRegClass::xmm_reg | X86InlineAsmRegClass::zmm_reg),
             Abi::Vector { .. },
-        ) if layout.size.bytes() == 64 => cx.type_vector(cx.type_f64(), 8),
+        ) if layout.ty_size.bytes() == 64 => cx.type_vector(cx.type_f64(), 8),
         (
             InlineAsmRegClass::Arm(ArmInlineAsmRegClass::sreg | ArmInlineAsmRegClass::sreg_low16),
             Abi::Scalar(s),

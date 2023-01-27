@@ -455,14 +455,14 @@ fn fn_abi_adjust_for_abi<'tcx>(
                 _ => return,
             }
 
-            let size = arg.layout.size;
-            if arg.layout.is_unsized() || size > Pointer.ty_size(cx) {
+            let ty_size = arg.layout.ty_size;
+            if arg.layout.is_unsized() || ty_size > Pointer.ty_size(cx) {
                 arg.make_indirect();
             } else {
                 // We want to pass small aggregates as immediates, but using
                 // a LLVM aggregate type for this leads to bad optimizations,
                 // so we pick an appropriately sized integer type instead.
-                arg.cast_to(Reg { kind: RegKind::Integer, size });
+                arg.cast_to(Reg { kind: RegKind::Integer, size: ty_size });
             }
 
             // If we deduced that this parameter was read-only, add that to the attribute list now.

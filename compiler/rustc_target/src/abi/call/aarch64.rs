@@ -28,20 +28,20 @@ where
     C: HasDataLayout,
 {
     arg.layout.homogeneous_aggregate(cx).ok().and_then(|ha| ha.unit()).and_then(|unit| {
-        let size = arg.layout.size;
+        let ty_size = arg.layout.ty_size;
 
         // Ensure we have at most four uniquely addressable members.
-        if size > unit.size.checked_mul(4, cx).unwrap() {
+        if ty_size > unit.size.checked_mul(4, cx).unwrap() {
             return None;
         }
 
         let valid_unit = match unit.kind {
             RegKind::Integer => false,
             RegKind::Float => true,
-            RegKind::Vector => size.bits() == 64 || size.bits() == 128,
+            RegKind::Vector => ty_size.bits() == 64 || ty_size.bits() == 128,
         };
 
-        valid_unit.then_some(Uniform { unit, total: size })
+        valid_unit.then_some(Uniform { unit, total: ty_size })
     })
 }
 
@@ -61,10 +61,10 @@ where
         ret.cast_to(uniform);
         return;
     }
-    let size = ret.layout.size;
-    let bits = size.bits();
+    let ty_size = ret.layout.ty_size;
+    let bits = ty_size.bits();
     if bits <= 128 {
-        ret.cast_to(Uniform { unit: Reg::i64(), total: size });
+        ret.cast_to(Uniform { unit: Reg::i64(), total: ty_size });
         return;
     }
     ret.make_indirect();
@@ -86,10 +86,10 @@ where
         arg.cast_to(uniform);
         return;
     }
-    let size = arg.layout.size;
-    let bits = size.bits();
+    let ty_size = arg.layout.ty_size;
+    let bits = ty_size.bits();
     if bits <= 128 {
-        arg.cast_to(Uniform { unit: Reg::i64(), total: size });
+        arg.cast_to(Uniform { unit: Reg::i64(), total: ty_size });
         return;
     }
     arg.make_indirect();

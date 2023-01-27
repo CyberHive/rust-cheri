@@ -342,8 +342,8 @@ where
     ) -> InterpResult<'tcx, Option<AllocRef<'_, 'tcx, M::Provenance, M::AllocExtra>>> {
         assert!(!place.layout.is_unsized());
         assert!(!place.meta.has_meta());
-        let size = place.layout.size;
-        self.get_ptr_alloc(place.ptr, size, place.align)
+        let ty_size = place.layout.ty_size;
+        self.get_ptr_alloc(place.ptr, ty_size, place.align)
     }
 
     #[inline]
@@ -353,8 +353,8 @@ where
     ) -> InterpResult<'tcx, Option<AllocRefMut<'_, 'tcx, M::Provenance, M::AllocExtra>>> {
         assert!(!place.layout.is_unsized());
         assert!(!place.meta.has_meta());
-        let size = place.layout.size;
-        self.get_ptr_alloc_mut(place.ptr, size, place.align)
+        let ty_size = place.layout.ty_size;
+        self.get_ptr_alloc_mut(place.ptr, ty_size, place.align)
     }
 
     /// Check if this mplace is dereferenceable and sufficiently aligned.
@@ -365,7 +365,7 @@ where
     ) -> InterpResult<'tcx> {
         let (size, align) = self
             .size_and_align_of_mplace(&mplace)?
-            .unwrap_or((mplace.layout.size, mplace.layout.align.abi));
+            .unwrap_or((mplace.layout.ty_size, mplace.layout.align.abi));
         assert!(mplace.align <= align, "dynamic alignment less strict than static one?");
         let align = M::enforce_alignment(self).then_some(align);
         self.check_ptr_access_align(mplace.ptr, size, align.unwrap_or(Align::ONE), msg)?;
@@ -384,7 +384,7 @@ where
         let (len, e_ty) = mplace.layout.ty.simd_size_and_type(*self.tcx);
         let array = self.tcx.mk_array(e_ty, len);
         let layout = self.layout_of(array)?;
-        assert_eq!(layout.size, mplace.layout.size);
+        assert_eq!(layout.ty_size, mplace.layout.ty_size);
         Ok((MPlaceTy { layout, ..*mplace }, len))
     }
 
@@ -541,7 +541,7 @@ where
                 };
                 let ty_size = s.ty_size(&tcx);
                 let val_size = s.val_size(&tcx);
-                assert_eq!(ty_size, layout.size, "abi::Scalar size does not match layout size");
+                assert_eq!(ty_size, layout.ty_size, "abi::Scalar size does not match layout size");
                 alloc.write_scalar(alloc_range(Size::ZERO, ty_size, val_size), scalar)
             }
             Immediate::ScalarPair(a_val, b_val) => {
@@ -653,7 +653,9 @@ where
                 if dest.layout.is_unsized() {
                     throw_inval!(SizeOfUnsizedType(dest.layout.ty));
                 }
-                assert_eq!(src.layout.size, dest.layout.size);
+                // TODO: Should this really be val_size? It makes sense as we are checking if we
+                // can write the value of `src` to `dest`.
+                assert_eq!(src.layout.val_size, dest.layout.val_size);
                 // Yay, we got a value that we can write directly.
                 return if layout_compat {
                     self.write_immediate_no_validate(*src_val, dest)
@@ -685,7 +687,7 @@ where
             assert_eq!(src_size, dest_size, "Cannot copy differently-sized data");
         } else {
             // As a cheap approximation, we compare the fixed parts of the size.
-            assert_eq!(src.layout.size, dest.layout.size);
+            assert_eq!(src.layout.ty_size, dest.layout.ty_size);
         }
 
         self.mem_copy(
@@ -749,7 +751,7 @@ where
         kind: MemoryKind<M::MemoryKind>,
     ) -> InterpResult<'tcx, MPlaceTy<'tcx, M::Provenance>> {
         assert!(!layout.is_unsized());
-        let ptr = self.allocate_ptr(layout.size, layout.align.abi, kind)?;
+        let ptr = self.allocate_ptr(layout.ty_size, layout.align.abi, kind)?;
         Ok(MPlaceTy::from_aligned_ptr(ptr.into(), layout))
     }
 

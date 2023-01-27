@@ -94,7 +94,9 @@ fn scalar_pair<'tcx>(cx: &LayoutCx<'tcx, TyCtxt<'tcx>>, a: Scalar, b: Scalar) ->
     let b_align = b.align(dl);
     let align = a.align(dl).max(b_align).max(dl.aggregate_align);
     let b_offset = a.ty_size(dl).align_to(b_align.abi);
-    let size = (b_offset + b.ty_size(dl)).align_to(align.abi);
+    let ty_size = (b_offset + b.ty_size(dl)).align_to(align.abi);
+    // FIXME: This is likely wrong.
+    let val_size = a.val_size(dl) + b.val_size(dl);
 
     // HACK(nox): We iter on `b` and then `a` because `max_by_key`
     // returns the last maximum.
@@ -112,7 +114,8 @@ fn scalar_pair<'tcx>(cx: &LayoutCx<'tcx, TyCtxt<'tcx>>, a: Scalar, b: Scalar) ->
         abi: Abi::ScalarPair(a, b),
         largest_niche,
         align,
-        size,
+        ty_size,
+        val_size,
     }
 }
 
@@ -235,7 +238,7 @@ fn univariant_uninterned<'tcx>(
             }
         }
 
-        offset = offset.checked_add(field.size, dl).ok_or(LayoutError::SizeOverflow(ty))?;
+        offset = offset.checked_add(field.ty_size, dl).ok_or(LayoutError::SizeOverflow(ty))?;
     }
 
     if let Some(repr_align) = repr.align {
@@ -257,6 +260,8 @@ fn univariant_uninterned<'tcx>(
 
     let size = min_size.align_to(align.abi);
     let mut abi = Abi::Aggregate { sized };
+    // TODO: Can we do better than this?
+    let val_size = size;
 
     // Unpack newtype ABIs and find scalar pairs.
     if sized && size.bytes() > 0 {
@@ -267,7 +272,7 @@ fn univariant_uninterned<'tcx>(
             // We have exactly one non-ZST field.
             (Some((i, field)), None, None) => {
                 // Field fills the struct and it has a scalar or scalar pair ABI.
-                if offsets[i].bytes() == 0 && align.abi == field.align.abi && size == field.size {
+                if offsets[i].bytes() == 0 && align.abi == field.align.abi && size == field.ty_size {
                     match field.abi {
                         // For plain scalars, or vectors of them, we can't unpack
                         // newtypes for `#[repr(C)]`, as that affects C ABIs.
@@ -305,7 +310,7 @@ fn univariant_uninterned<'tcx>(
                         if offsets[i] == pair_offsets[0]
                             && offsets[j] == pair_offsets[1]
                             && align == pair.align
-                            && size == pair.size
+                            && size == pair.ty_size
                         {
                             // We can use `ScalarPair` only when it matches our
                             // already computed layout (including `#[repr(C)]`).
@@ -330,7 +335,8 @@ fn univariant_uninterned<'tcx>(
         abi,
         largest_niche,
         align,
-        size,
+        ty_size: size,
+        val_size,
     })
 }
 
@@ -388,7 +394,8 @@ fn layout_of_uncached<'tcx>(
             abi: Abi::Uninhabited,
             largest_niche: None,
             align: dl.i8_align,
-            size: Size::ZERO,
+            ty_size: Size::ZERO,
+            val_size: Size::ZERO,
         }),
 
         // Potentially-wide pointers.
@@ -444,7 +451,9 @@ fn layout_of_uncached<'tcx>(
 
             let count = count.try_eval_usize(tcx, param_env).ok_or(LayoutError::Unknown(ty))?;
             let element = cx.layout_of(element)?;
-            let size = element.size.checked_mul(count, dl).ok_or(LayoutError::SizeOverflow(ty))?;
+            let ty_size = element.ty_size.checked_mul(count, dl).ok_or(LayoutError::SizeOverflow(ty))?;
+            // TODO: Can we do better than this?
+            let val_size = ty_size;
 
             let abi = if count != 0 && tcx.conservative_is_privately_uninhabited(param_env.and(ty))
             {
@@ -457,22 +466,24 @@ fn layout_of_uncached<'tcx>(
 
             tcx.intern_layout(LayoutS {
                 variants: Variants::Single { index: VariantIdx::new(0) },
-                fields: FieldsShape::Array { stride: element.size, count },
+                fields: FieldsShape::Array { stride: element.ty_size, count },
                 abi,
                 largest_niche,
                 align: element.align,
-                size,
+                ty_size,
+                val_size,
             })
         }
         ty::Slice(element) => {
             let element = cx.layout_of(element)?;
             tcx.intern_layout(LayoutS {
                 variants: Variants::Single { index: VariantIdx::new(0) },
-                fields: FieldsShape::Array { stride: element.size, count: 0 },
+                fields: FieldsShape::Array { stride: element.ty_size, count: 0 },
                 abi: Abi::Aggregate { sized: false },
                 largest_niche: None,
                 align: element.align,
-                size: Size::ZERO,
+                ty_size: Size::ZERO,
+                val_size: Size::ZERO,
             })
         }
         ty::Str => tcx.intern_layout(LayoutS {
@@ -481,7 +492,8 @@ fn layout_of_uncached<'tcx>(
             abi: Abi::Aggregate { sized: false },
             largest_niche: None,
             align: dl.i8_align,
-            size: Size::ZERO,
+            ty_size: Size::ZERO,
+            val_size: Size::ZERO,
         }),
 
         // Odd unit types.
@@ -616,15 +628,17 @@ fn layout_of_uncached<'tcx>(
                 };
 
             // Compute the size and alignment of the vector:
-            let size = e_ly.size.checked_mul(e_len, dl).ok_or(LayoutError::SizeOverflow(ty))?;
-            let align = dl.vector_align(size);
-            let size = size.align_to(align.abi);
+            let ty_size = e_ly.ty_size.checked_mul(e_len, dl).ok_or(LayoutError::SizeOverflow(ty))?;
+            let align = dl.vector_align(ty_size);
+            let ty_size = ty_size.align_to(align.abi);
+            // TODO: Can we do better than this?
+            let val_size = ty_size;
 
             // Compute the placement of the vector fields:
             let fields = if is_array {
                 FieldsShape::Arbitrary { offsets: vec![Size::ZERO], memory_index: vec![0] }
             } else {
-                FieldsShape::Array { stride: e_ly.size, count: e_len }
+                FieldsShape::Array { stride: e_ly.ty_size, count: e_len }
             };
 
             tcx.intern_layout(LayoutS {
@@ -632,7 +646,8 @@ fn layout_of_uncached<'tcx>(
                 fields,
                 abi: Abi::Vector { element: e_abi, count: e_len },
                 largest_niche: e_ly.largest_niche,
-                size,
+                ty_size,
+                val_size,
                 align,
             })
         }
@@ -698,7 +713,7 @@ fn layout_of_uncached<'tcx>(
                         }
                     }
 
-                    size = cmp::max(size, field.size);
+                    size = cmp::max(size, field.ty_size);
                 }
 
                 if let Some(pack) = def.repr().pack {
@@ -713,7 +728,9 @@ fn layout_of_uncached<'tcx>(
                     abi,
                     largest_niche: None,
                     align,
-                    size: size.align_to(align.abi),
+                    ty_size: size.align_to(align.abi),
+                    // TODO: Can we do better than this?
+                    val_size: size.align_to(align.abi),
                 }));
             }
 
@@ -895,7 +912,7 @@ fn layout_of_uncached<'tcx>(
 
                     let largest_variant_index = match variant_layouts
                         .iter_enumerated()
-                        .max_by_key(|(_i, layout)| layout.size.bytes())
+                        .max_by_key(|(_i, layout)| layout.ty_size.bytes())
                         .map(|(i, _layout)| i)
                     {
                         None => return Ok(None),
@@ -926,8 +943,10 @@ fn layout_of_uncached<'tcx>(
 
                     let niche_offset = niche.offset
                         + variant_layouts[largest_variant_index].fields.offset(field_index);
-                    let niche_size = niche.value.size(dl);
-                    let size = variant_layouts[largest_variant_index].size.align_to(align.abi);
+                    let niche_size = niche.value.ty_size(dl);
+                    let size = variant_layouts[largest_variant_index].ty_size.align_to(align.abi);
+                    // TODO: Check if we can do anything better than this.
+                    let val_size = size;
 
                     let all_variants_fit =
                         variant_layouts.iter_enumerated_mut().all(|(i, layout)| {
@@ -937,7 +956,7 @@ fn layout_of_uncached<'tcx>(
 
                             layout.largest_niche = None;
 
-                            if layout.size <= niche_offset {
+                            if layout.ty_size <= niche_offset {
                                 // This variant will fit before the niche.
                                 return true;
                             }
@@ -946,7 +965,7 @@ fn layout_of_uncached<'tcx>(
                             let this_align = layout.align.abi;
                             let this_offset = (niche_offset + niche_size).align_to(this_align);
 
-                            if this_offset + layout.size > size {
+                            if this_offset + layout.ty_size > size {
                                 return false;
                             }
 
@@ -968,7 +987,7 @@ fn layout_of_uncached<'tcx>(
                             if !layout.abi.is_uninhabited() {
                                 layout.abi = Abi::Aggregate { sized: true };
                             }
-                            layout.size += this_offset;
+                            layout.ty_size += this_offset;
 
                             true
                         });
@@ -981,8 +1000,8 @@ fn layout_of_uncached<'tcx>(
 
                     let others_zst = variant_layouts
                         .iter_enumerated()
-                        .all(|(i, layout)| i == largest_variant_index || layout.size == Size::ZERO);
-                    let same_size = size == variant_layouts[largest_variant_index].size;
+                        .all(|(i, layout)| i == largest_variant_index || layout.ty_size == Size::ZERO);
+                    let same_size = size == variant_layouts[largest_variant_index].ty_size;
                     let same_align = align == variant_layouts[largest_variant_index].align;
 
                     let abi = if variant_layouts.iter().all(|v| v.abi.is_uninhabited()) {
@@ -1024,7 +1043,8 @@ fn layout_of_uncached<'tcx>(
                         },
                         abi,
                         largest_niche,
-                        size,
+                        ty_size: size,
+                        val_size,
                         align,
                     };
 
@@ -1061,7 +1081,7 @@ fn layout_of_uncached<'tcx>(
             let (min_ity, signed) = Integer::repr_discr(tcx, ty, &def.repr(), min, max);
 
             let mut align = dl.aggregate_align;
-            let mut size = Size::ZERO;
+            let mut ty_size = Size::ZERO;
 
             // We're interested in the smallest alignment, so start large.
             let mut start_align = Align::from_bytes(256).unwrap();
@@ -1101,17 +1121,19 @@ fn layout_of_uncached<'tcx>(
                             break;
                         }
                     }
-                    size = cmp::max(size, st.size);
+                    ty_size = cmp::max(ty_size, st.ty_size);
                     align = align.max(st.align);
                     Ok(st)
                 })
                 .collect::<Result<IndexVec<VariantIdx, _>, _>>()?;
 
             // Align the maximum variant size to the largest alignment.
-            size = size.align_to(align.abi);
+            ty_size = ty_size.align_to(align.abi);
+            // TODO: Can we do better here?
+            let val_size = ty_size;
 
             // TODO: More complexity needed here.
-            if size.bytes() >= dl.obj_size_bound(None) {
+            if ty_size.bytes() >= dl.obj_size_bound(None) {
                 return Err(LayoutError::SizeOverflow(ty));
             }
 
@@ -1169,8 +1191,8 @@ fn layout_of_uncached<'tcx>(
                                 }
                             }
                             // We might be making the struct larger.
-                            if variant.size <= old_ity_size {
-                                variant.size = new_ity_size;
+                            if variant.ty_size <= old_ity_size {
+                                variant.ty_size = new_ity_size;
                             }
                         }
                         _ => bug!(),
@@ -1190,7 +1212,7 @@ fn layout_of_uncached<'tcx>(
 
             if layout_variants.iter().all(|v| v.abi.is_uninhabited()) {
                 abi = Abi::Uninhabited;
-            } else if tag.ty_size(dl) == size {
+            } else if tag.ty_size(dl) == ty_size {
                 // Make sure we only use scalar layout when the enum is entirely its
                 // own tag (i.e. it has no padding nor any non-ZST variant fields).
                 abi = Abi::Scalar(tag);
@@ -1256,7 +1278,7 @@ fn layout_of_uncached<'tcx>(
                     if pair_offsets[0] == Size::ZERO
                         && pair_offsets[1] == *offset
                         && align == pair.align
-                        && size == pair.size
+                        && ty_size == pair.ty_size
                     {
                         // We can use `ScalarPair` only when it matches our
                         // already computed layout (including `#[repr(C)]`).
@@ -1275,7 +1297,7 @@ fn layout_of_uncached<'tcx>(
                     if variant.fields.count() > 0 && matches!(variant.abi, Abi::Aggregate { .. }) {
                         variant.abi = abi;
                         // Also need to bump up the size and alignment, so that the entire value fits in here.
-                        variant.size = cmp::max(variant.size, size);
+                        variant.ty_size = cmp::max(variant.ty_size, ty_size);
                         variant.align.abi = cmp::max(variant.align.abi, align.abi);
                     }
                 }
@@ -1294,7 +1316,8 @@ fn layout_of_uncached<'tcx>(
                 largest_niche,
                 abi,
                 align,
-                size,
+                ty_size,
+                val_size,
             };
 
             let tagged_layout = TmpLayout { layout: tagged_layout, variants: layout_variants };
@@ -1309,7 +1332,7 @@ fn layout_of_uncached<'tcx>(
                         tmp_l.layout.largest_niche.map_or(0, |n| n.available(dl))
                     };
                     match (
-                        tl.layout.size.cmp(&nl.layout.size),
+                        tl.layout.ty_size.cmp(&nl.layout.ty_size),
                         niche_size(&tl).cmp(&niche_size(&nl)),
                     ) {
                         (Greater, _) => nl,
@@ -1533,7 +1556,7 @@ fn generator_layout<'tcx>(
         StructKind::AlwaysSized,
     )?;
 
-    let (prefix_size, prefix_align) = (prefix.size, prefix.align);
+    let (prefix_size, prefix_align) = (prefix.ty_size, prefix.align);
 
     // Split the prefix layout into the "outer" fields (upvars and
     // discriminant) and the "promoted" fields. Promoted fields will
@@ -1570,7 +1593,7 @@ fn generator_layout<'tcx>(
         _ => bug!(),
     };
 
-    let mut size = prefix.size;
+    let mut ty_size = prefix.ty_size;
     let mut align = prefix.align;
     let variants = info
         .variant_fields
@@ -1643,13 +1666,15 @@ fn generator_layout<'tcx>(
                 memory_index: combined_memory_index,
             };
 
-            size = size.max(variant.size);
+            ty_size = ty_size.max(variant.ty_size);
             align = align.max(variant.align);
             Ok(tcx.intern_layout(variant))
         })
         .collect::<Result<IndexVec<VariantIdx, _>, _>>()?;
 
-    size = size.align_to(align.abi);
+    ty_size = ty_size.align_to(align.abi);
+    // TODO: Can we do better than this?
+    let val_size = ty_size;
 
     let abi = if prefix.abi.is_uninhabited() || variants.iter().all(|v| v.abi().is_uninhabited()) {
         Abi::Uninhabited
@@ -1667,7 +1692,8 @@ fn generator_layout<'tcx>(
         fields: outer_fields,
         abi,
         largest_niche: prefix.largest_niche,
-        size,
+        ty_size,
+        val_size,
         align,
     });
     debug!("generator layout ({:?}): {:#?}", ty, layout);
@@ -1703,7 +1729,7 @@ fn record_layout_for_printing_outlined<'tcx>(
             kind,
             type_desc,
             layout.align.abi,
-            layout.size,
+            layout.ty_size,
             packed,
             opt_discr_size,
             variants,
@@ -1739,14 +1765,14 @@ fn record_layout_for_printing_outlined<'tcx>(
             .map(|(i, &name)| {
                 let field_layout = layout.field(cx, i);
                 let offset = layout.fields.offset(i);
-                let field_end = offset + field_layout.size;
+                let field_end = offset + field_layout.ty_size;
                 if min_size < field_end {
                     min_size = field_end;
                 }
                 FieldInfo {
                     name,
                     offset: offset.bytes(),
-                    size: field_layout.size.bytes(),
+                    size: field_layout.ty_size.bytes(),
                     align: field_layout.align.abi.bytes(),
                 }
             })
@@ -1756,7 +1782,7 @@ fn record_layout_for_printing_outlined<'tcx>(
             name: n,
             kind: if layout.is_unsized() { SizeKind::Min } else { SizeKind::Exact },
             align: layout.align.abi.bytes(),
-            size: if min_size.bytes() == 0 { layout.size.bytes() } else { min_size.bytes() },
+            size: if min_size.bytes() == 0 { layout.ty_size.bytes() } else { min_size.bytes() },
             fields: field_info,
         }
     };

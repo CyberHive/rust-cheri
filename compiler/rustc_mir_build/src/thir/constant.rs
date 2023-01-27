@@ -10,7 +10,7 @@ pub(crate) fn lit_to_const<'tcx>(
 
     let trunc = |n| {
         let param_ty = ParamEnv::reveal_all().and(ty);
-        let width = tcx.layout_of(param_ty).map_err(|_| LitToConstError::Reported)?.size;
+        let width = tcx.layout_of(param_ty).map_err(|_| LitToConstError::Reported)?.ty_size;
         trace!("trunc {} with size {} and shift {}", n, width.bits(), 128 - width.bits());
         let result = width.truncate(n);
         trace!("trunc result: {}", result);

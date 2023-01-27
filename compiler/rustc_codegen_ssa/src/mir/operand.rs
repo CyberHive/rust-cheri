@@ -193,7 +193,7 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
 
             // Newtype of a scalar, scalar pair or vector.
             (OperandValue::Immediate(_) | OperandValue::Pair(..), _)
-                if field.size == self.layout.size =>
+                if field.ty_size == self.layout.ty_size =>
             {
                 assert_eq!(offset.bytes(), 0);
                 self.val
@@ -202,11 +202,11 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
             // Extract a scalar component from a pair.
             (OperandValue::Pair(a_llval, b_llval), Abi::ScalarPair(a, b)) => {
                 if offset.bytes() == 0 {
-                    assert_eq!(field.size, a.ty_size(bx.cx()));
+                    assert_eq!(field.ty_size, a.ty_size(bx.cx()));
                     OperandValue::Immediate(a_llval)
                 } else {
                     assert_eq!(offset, a.ty_size(bx.cx()).align_to(b.align(bx.cx()).abi));
-                    assert_eq!(field.size, b.ty_size(bx.cx()));
+                    assert_eq!(field.ty_size, b.ty_size(bx.cx()));
                     OperandValue::Immediate(b_llval)
                 }
             }

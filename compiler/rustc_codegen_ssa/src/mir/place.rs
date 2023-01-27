@@ -378,9 +378,9 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
         // as this will yield the lowest alignment.
         let layout = self.layout.field(bx, 0);
         let offset = if let Some(llindex) = bx.const_to_opt_uint(llindex) {
-            layout.size.checked_mul(llindex, bx).unwrap_or(layout.size)
+            layout.ty_size.checked_mul(llindex, bx).unwrap_or(layout.ty_size)
         } else {
-            layout.size
+            layout.ty_size
         };
 
         PlaceRef {
@@ -434,11 +434,11 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
     }
 
     pub fn storage_live<Bx: BuilderMethods<'a, 'tcx, Value = V>>(&self, bx: &mut Bx) {
-        bx.lifetime_start(self.llval, self.layout.size);
+        bx.lifetime_start(self.llval, self.layout.ty_size);
     }
 
     pub fn storage_dead<Bx: BuilderMethods<'a, 'tcx, Value = V>>(&self, bx: &mut Bx) {
-        bx.lifetime_end(self.llval, self.layout.size);
+        bx.lifetime_end(self.llval, self.layout.ty_size);
     }
 }
 

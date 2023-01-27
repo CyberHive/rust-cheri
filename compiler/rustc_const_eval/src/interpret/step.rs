@@ -224,7 +224,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                     // This is performance-sensitive code for big static/const arrays! So we
                     // avoid writing each operand individually and instead just make many copies
                     // of the first element.
-                    let elem_size = first.layout.size;
+                    let elem_size = first.layout.ty_size;
                     let first_ptr = first.ptr;
                     let rest_ptr = first_ptr.offset(elem_size, self)?;
                     // For the alignment of `rest_ptr`, we crucially do *not* use `first.align` as
@@ -268,7 +268,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                     throw_inval!(SizeOfUnsizedType(ty));
                 }
                 let val = match null_op {
-                    mir::NullOp::SizeOf => layout.size.bytes(),
+                    mir::NullOp::SizeOf => layout.ty_size.bytes(),
                     mir::NullOp::AlignOf => layout.align.abi.bytes(),
                 };
                 self.write_scalar(Scalar::from_machine_usize(val, self), &dest)?;

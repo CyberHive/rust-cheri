@@ -406,12 +406,12 @@ impl<'tcx> TerminatorKind<'tcx> {
             SwitchInt { ref targets, switch_ty, .. } => ty::tls::with(|tcx| {
                 let param_env = ty::ParamEnv::empty();
                 let switch_ty = tcx.lift(switch_ty).unwrap();
-                let size = tcx.layout_of(param_env.and(switch_ty)).unwrap().size;
+                let ty_size = tcx.layout_of(param_env.and(switch_ty)).unwrap().ty_size;
                 targets
                     .values
                     .iter()
                     .map(|&u| {
-                        mir::ConstantKind::from_scalar(tcx, Scalar::from_uint(u, size), switch_ty)
+                        mir::ConstantKind::from_scalar(tcx, Scalar::from_uint(u, ty_size), switch_ty)
                             .to_string()
                             .into()
                     })

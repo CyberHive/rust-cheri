@@ -114,7 +114,7 @@ macro_rules! return_if_di_node_created_in_meantime {
 /// Extract size and alignment from a TyAndLayout.
 #[inline]
 fn size_and_align_of<'tcx>(ty_and_layout: TyAndLayout<'tcx>) -> (Size, Align) {
-    (ty_and_layout.size, ty_and_layout.align.abi)
+    (ty_and_layout.ty_size, ty_and_layout.align.abi)
 }
 
 /// Creates debuginfo for a fixed size array (e.g. `[u64; 123]`).
@@ -248,7 +248,7 @@ fn build_pointer_or_reference_di_node<'ll, 'tcx>(
                         llvm::LLVMRustDIBuilderCreatePointerType(
                             DIB(cx),
                             pointee_type_di_node,
-                            addr_field.size.bits(),
+                            addr_field.ty_size.bits(),
                             addr_field.align.abi.bits() as u32,
                             0, // Ignore DWARF address space.
                             std::ptr::null(),
@@ -261,7 +261,7 @@ fn build_pointer_or_reference_di_node<'ll, 'tcx>(
                             cx,
                             owner,
                             addr_field_name,
-                            (addr_field.size, addr_field.align.abi),
+                            (addr_field.ty_size, addr_field.align.abi),
                             layout.fields.offset(abi::FAT_PTR_ADDR),
                             DIFlags::FlagZero,
                             data_ptr_type_di_node,
@@ -270,7 +270,7 @@ fn build_pointer_or_reference_di_node<'ll, 'tcx>(
                             cx,
                             owner,
                             extra_field_name,
-                            (extra_field.size, extra_field.align.abi),
+                            (extra_field.ty_size, extra_field.align.abi),
                             layout.fields.offset(abi::FAT_PTR_EXTRA),
                             DIFlags::FlagZero,
                             type_di_node(cx, extra_field.ty),
@@ -1014,7 +1014,7 @@ fn build_struct_type_di_node<'ll, 'tcx>(
                         cx,
                         owner,
                         &field_name[..],
-                        (field_layout.size, field_layout.align.abi),
+                        (field_layout.ty_size, field_layout.align.abi),
                         struct_type_and_layout.fields.offset(i),
                         DIFlags::FlagZero,
                         type_di_node(cx, field_layout.ty),

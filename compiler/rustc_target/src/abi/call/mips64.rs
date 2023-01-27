@@ -44,8 +44,8 @@ where
         return;
     }
 
-    let size = ret.layout.size;
-    let bits = size.bits();
+    let ty_size = ret.layout.ty_size;
+    let bits = ty_size.bits();
     if bits <= 128 {
         // Unlike other architectures which return aggregates in registers, MIPS n64 limits the
         // use of float registers to structures (not unions) containing exactly one or two
@@ -68,7 +68,7 @@ where
         }
 
         // Cast to a uniform int structure
-        ret.cast_to(Uniform { unit: Reg::i64(), total: size });
+        ret.cast_to(Uniform { unit: Reg::i64(), total: ty_size });
     } else {
         ret.make_indirect();
     }
@@ -85,7 +85,7 @@ where
     }
 
     let dl = cx.data_layout();
-    let size = arg.layout.size;
+    let ty_size = arg.layout.ty_size;
     let mut prefix = [None; 8];
     let mut prefix_index = 0;
 
@@ -136,7 +136,7 @@ where
     };
 
     // Extract first 8 chunks as the prefix
-    let rest_size = size - Size::from_bytes(8) * prefix_index as u64;
+    let rest_size = ty_size - Size::from_bytes(8) * prefix_index as u64;
     arg.cast_to(CastTarget {
         prefix,
         rest: Uniform { unit: Reg::i64(), total: rest_size },

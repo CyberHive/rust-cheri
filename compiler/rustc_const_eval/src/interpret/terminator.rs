@@ -197,7 +197,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                 // then who knows what happens.
                 return false;
             }
-            if caller_abi.layout.size != callee_abi.layout.size
+            if caller_abi.layout.ty_size != callee_abi.layout.ty_size
                 || caller_abi.layout.align.abi != callee_abi.layout.align.abi
             {
                 // This cannot go well...

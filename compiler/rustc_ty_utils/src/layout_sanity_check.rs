@@ -16,7 +16,7 @@ pub(super) fn sanity_check_layout<'tcx>(
         assert!(layout.abi.is_uninhabited());
     }
 
-    if layout.size.bytes() % layout.align.abi.bytes() != 0 {
+    if layout.ty_size.bytes() % layout.align.abi.bytes() != 0 {
         bug!("size is not a multiple of align, in the following layout:\n{layout:#?}");
     }
 
@@ -52,7 +52,7 @@ pub(super) fn sanity_check_layout<'tcx>(
             };
             if fields.next().is_none() {
                 let (offset, first) = first;
-                if offset == Size::ZERO && first.layout.size() == layout.size {
+                if offset == Size::ZERO && first.layout.size() == layout.ty_size {
                     // This is a newtype, so keep recursing.
                     // FIXME(RalfJung): I don't think it would be correct to do any checks for
                     // alignment here, so we don't. Is that correct?
@@ -116,7 +116,7 @@ pub(super) fn sanity_check_layout<'tcx>(
                                 "`Scalar` field at non-0 offset in {inner:#?}",
                             );
                             assert_eq!(
-                                field.size, ty_size,
+                                field.ty_size, ty_size,
                                 "`Scalar` field with bad size in {inner:#?}",
                             );
                             assert_eq!(
@@ -199,7 +199,7 @@ pub(super) fn sanity_check_layout<'tcx>(
                         "`ScalarPair` first field at non-0 offset in {inner:#?}",
                     );
                     assert_eq!(
-                        field1.size, ty_size1,
+                        field1.ty_size, ty_size1,
                         "`ScalarPair` first field with bad size in {inner:#?}",
                     );
                     assert_eq!(
@@ -215,7 +215,7 @@ pub(super) fn sanity_check_layout<'tcx>(
                         "`ScalarPair` second field at bad offset in {inner:#?}",
                     );
                     assert_eq!(
-                        field2.size, ty_size2,
+                        field2.ty_size, ty_size2,
                         "`ScalarPair` second field with bad size in {inner:#?}",
                     );
                     assert_eq!(
@@ -252,10 +252,10 @@ pub(super) fn sanity_check_layout<'tcx>(
                 assert!(matches!(variant.variants(), Variants::Single { .. }));
                 // Variants should have the same or a smaller size as the full thing,
                 // and same for alignment.
-                if variant.size() > layout.size {
+                if variant.size() > layout.ty_size {
                     bug!(
                         "Type with size {} bytes has variant with size {} bytes: {layout:#?}",
-                        layout.size.bytes(),
+                        layout.ty_size.bytes(),
                         variant.size().bytes(),
                     )
                 }

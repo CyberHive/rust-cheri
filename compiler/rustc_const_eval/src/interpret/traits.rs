@@ -54,6 +54,6 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
         let (ty, _trait_ref) = self.get_ptr_vtable(vtable)?;
         let layout = self.layout_of(ty)?;
         assert!(!layout.is_unsized(), "there are no vtables for unsized types");
-        Ok((layout.size, layout.align.abi))
+        Ok((layout.ty_size, layout.align.abi))
     }
 }

@@ -24,14 +24,14 @@ fn copy_intrinsic<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     count: Bx::Value,
 ) {
     let layout = bx.layout_of(ty);
-    let size = layout.size;
+    let ty_size = layout.ty_size;
     let align = layout.align.abi;
-    let size = bx.mul(bx.const_usize(size.bytes()), count);
+    let ty_size = bx.mul(bx.const_usize(ty_size.bytes()), count);
     let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
     if allow_overlap {
-        bx.memmove(dst, align, src, align, size, flags);
+        bx.memmove(dst, align, src, align, ty_size, flags);
     } else {
-        bx.memcpy(dst, align, src, align, size, flags);
+        bx.memcpy(dst, align, src, align, ty_size, flags);
     }
 }
 
@@ -44,11 +44,11 @@ fn memset_intrinsic<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     count: Bx::Value,
 ) {
     let layout = bx.layout_of(ty);
-    let size = layout.size;
+    let ty_size = layout.ty_size;
     let align = layout.align.abi;
-    let size = bx.mul(bx.const_usize(size.bytes()), count);
+    let ty_size = bx.mul(bx.const_usize(ty_size.bytes()), count);
     let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
-    bx.memset(dst, val, size, align, flags);
+    bx.memset(dst, val, ty_size, align, flags);
 }
 
 impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
@@ -91,7 +91,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     let (llsize, _) = glue::size_and_align_of_dst(bx, tp_ty, Some(meta));
                     llsize
                 } else {
-                    bx.const_usize(bx.layout_of(tp_ty).size.bytes())
+                    bx.const_usize(bx.layout_of(tp_ty).ty_size.bytes())
                 }
             }
             sym::min_align_of_val => {
@@ -463,7 +463,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                         let ty = substs.type_at(0);
                         if int_type_width_signed(ty, bx.tcx()).is_some() || ty.is_unsafe_ptr() {
                             let layout = bx.layout_of(ty);
-                            let size = layout.size;
+                            let ty_size = layout.ty_size;
                             let mut source = args[0].immediate();
                             if ty.is_unsafe_ptr() {
                                 // Some platforms do not support atomic operations on pointers,
@@ -473,11 +473,11 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                                 // TODO: Get correct address space from source.
                                 let ptr_llty = bx.type_ptr_to_ext(llty, dl.default_address_space);
                                 source = bx.pointercast(source, ptr_llty);
-                                let result = bx.atomic_load(llty, source, parse_ordering(bx, ordering), size);
+                                let result = bx.atomic_load(llty, source, parse_ordering(bx, ordering), ty_size);
                                 // ... and then cast the result back to a pointer
                                 bx.inttoptr(result, bx.backend_type(layout))
                             } else {
-                                bx.atomic_load(bx.backend_type(layout), source, parse_ordering(bx, ordering), size)
+                                bx.atomic_load(bx.backend_type(layout), source, parse_ordering(bx, ordering), ty_size)
                             }
                         } else {
                             return invalid_monomorphization(ty);
@@ -487,7 +487,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     "store" => {
                         let ty = substs.type_at(0);
                         if int_type_width_signed(ty, bx.tcx()).is_some() || ty.is_unsafe_ptr() {
-                            let size = bx.layout_of(ty).size;
+                            let ty_size = bx.layout_of(ty).ty_size;
                             let mut val = args[1].immediate();
                             let mut ptr = args[0].immediate();
                             if ty.is_unsafe_ptr() {
@@ -499,7 +499,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                                 ptr = bx.pointercast(ptr, ptr_llty);
                                 val = bx.get_pointer_address(val);
                             }
-                            bx.atomic_store(val, ptr, parse_ordering(bx, ordering), size);
+                            bx.atomic_store(val, ptr, parse_ordering(bx, ordering), ty_size);
                             return;
                         } else {
                             return invalid_monomorphization(ty);
@@ -568,7 +568,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
 
             sym::ptr_offset_from | sym::ptr_offset_from_unsigned => {
                 let ty = substs.type_at(0);
-                let pointee_size = bx.layout_of(ty).size;
+                let pointee_size = bx.layout_of(ty).ty_size;
 
                 let a = args[0].immediate();
                 let b = args[1].immediate();

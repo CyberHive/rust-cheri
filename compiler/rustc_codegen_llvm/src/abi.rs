@@ -261,7 +261,7 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
                     self.layout.align.abi,
                     llscratch,
                     scratch_align,
-                    bx.const_usize(self.layout.size.bytes()),
+                    bx.const_usize(self.layout.ty_size.bytes()),
                     MemFlags::empty(),
                 );
 

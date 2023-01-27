@@ -8,9 +8,9 @@ where
 {
     if val.layout.is_aggregate() {
         if let Some(unit) = val.layout.homogeneous_aggregate(cx).ok().and_then(|ha| ha.unit()) {
-            let size = val.layout.size;
-            if unit.size == size {
-                val.cast_to(Uniform { unit, total: size });
+            let ty_size = val.layout.ty_size;
+            if unit.size == ty_size {
+                val.cast_to(Uniform { unit, total: ty_size });
                 return true;
             }
         }

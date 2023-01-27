@@ -48,7 +48,7 @@ impl<'tcx> MirPass<'tcx> for SimplifyComparisonIntegral {
                     let layout = tcx
                         .layout_of(param_env.and(opt.branch_value_ty))
                         .expect("if we have an evaluated constant we must know the layout");
-                    int.assert_bits(layout.size)
+                    int.assert_bits(layout.val_size)
                 }
                 Scalar::Ptr(..) => continue,
             };

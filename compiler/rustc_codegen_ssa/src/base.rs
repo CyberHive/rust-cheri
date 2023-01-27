@@ -253,7 +253,7 @@ pub fn unsize_ptr<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 
                 assert_eq!(src_layout.fields.offset(i).bytes(), 0);
                 assert_eq!(dst_layout.fields.offset(i).bytes(), 0);
-                assert_eq!(src_layout.size, src_f.size);
+                assert_eq!(src_layout.ty_size, src_f.ty_size);
 
                 let dst_f = dst_layout.field(bx.cx(), i);
                 assert_ne!(src_f.ty, dst_f.ty);
@@ -387,12 +387,12 @@ pub fn memcpy_ty<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     layout: TyAndLayout<'tcx>,
     flags: MemFlags,
 ) {
-    let size = layout.size.bytes();
-    if size == 0 {
+    let ty_size = layout.ty_size.bytes();
+    if ty_size == 0 {
         return;
     }
 
-    bx.memcpy(dst, dst_align, src, src_align, bx.cx().const_usize(size), flags);
+    bx.memcpy(dst, dst_align, src, src_align, bx.cx().const_usize(ty_size), flags);
 }
 
 pub fn codegen_instance<'a, 'tcx: 'a, Bx: BuilderMethods<'a, 'tcx>>(
