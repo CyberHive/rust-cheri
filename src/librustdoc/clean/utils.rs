@@ -319,9 +319,9 @@ fn print_const_with_custom_print_scalar<'tcx>(
         }
         (mir::ConstantKind::Val(ConstValue::Scalar(int), _), ty::Int(i)) => {
             let ty = ct.ty();
-            let size = tcx.layout_of(ty::ParamEnv::empty().and(ty)).unwrap().size;
-            let data = int.assert_bits(size);
-            let sign_extended_data = size.sign_extend(data) as i128;
+            let val_size = tcx.layout_of(ty::ParamEnv::empty().and(ty)).unwrap().val_size;
+            let data = int.assert_bits(val_size);
+            let sign_extended_data = val_size.sign_extend(data) as i128;
             if underscores_and_type {
                 format!(
                     "{}{}",
