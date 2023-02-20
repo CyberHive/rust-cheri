@@ -355,7 +355,7 @@ impl<'ll, 'tcx> IntrinsicCallMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                 crate::asm::inline_asm_call(
                     self,
                     "",
-                    "r,~{memory}",
+                    if dl.is_cheri_purecap { "C,~{memory}" } else { "r,~{memory}" },
                     &[result.llval],
                     self.type_void(),
                     true,
