@@ -196,6 +196,11 @@ impl AllocRange {
         self.start + self.total_size // This does overflow checking.
     }
 
+    #[inline(always)]
+    pub fn val_end(self) -> Size {
+        self.start + self.val_size
+    }
+
     /// Returns the `subrange` within this range; panics if it is not a subrange.
     #[inline]
     pub fn subrange(self, subrange: AllocRange) -> AllocRange {
@@ -1147,7 +1152,7 @@ impl<Prov: Copy, Extra> Allocation<Prov, Extra> {
     /// Returns `Ok(())` if it's initialized. Otherwise returns the range of byte
     /// indexes of the first contiguous uninitialized access.
     fn is_init(&self, range: AllocRange) -> Result<(), AllocRange> {
-        self.init_mask.is_range_initialized(range.start, range.end()) // `Size` addition
+        self.init_mask.is_range_initialized(range.start, range.val_end()) // `Size` addition
     }
 
     /// Checks that a range of bytes is initialized. If not, returns the `InvalidUninitBytes`
