@@ -42,6 +42,7 @@ rustc_session = { path = "../rustc_session" }
 rustc_const_eval = { path = "../rustc_const_eval" }
 
 [dependencies.object]
-version = "0.29.0"
+git = "https://github.com/lewis-revill/object-cheri.git"
+branch = "ljr-cheri-0.29.0"
 default-features = false
 features = ["read_core", "elf", "macho", "pe", "unaligned", "archive", "write"]
