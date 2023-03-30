@@ -685,7 +685,7 @@ impl<'a, Ty> FnAbi<'a, Ty> {
                     }
                 }
             },
-            "aarch64" => {
+            "aarch64" | "morello+c64" => {
                 let param_policy = if cx.target_spec().is_like_osx {
                     aarch64::ParamExtension::ExtendTo32Bits
                 } else {

@@ -1201,6 +1201,7 @@ supported_targets! {
 
     ("aarch64-unknown-none", aarch64_unknown_none),
     ("aarch64-unknown-none-softfloat", aarch64_unknown_none_softfloat),
+    ("morello-unknown-none-purecap", morello_unknown_none_purecap),
 
     ("x86_64-fortanix-unknown-sgx", x86_64_fortanix_unknown_sgx),
 
