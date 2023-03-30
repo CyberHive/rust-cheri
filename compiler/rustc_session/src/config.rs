@@ -891,6 +891,8 @@ fn default_configuration(sess: &Session) -> CrateConfig {
     // NOTE: This should be kept in sync with `CrateCheckConfig::fill_well_known` below.
     let end = &sess.target.endian;
     let arch = &sess.target.arch;
+    let wordtysz =
+        sess.target.options.pointer_type_width.unwrap_or(sess.target.pointer_width).to_string();
     let wordsz = sess.target.pointer_width.to_string();
     let os = &sess.target.os;
     let env = &sess.target.env;
@@ -917,6 +919,7 @@ fn default_configuration(sess: &Session) -> CrateConfig {
     }
     ret.insert((sym::target_arch, Some(Symbol::intern(arch))));
     ret.insert((sym::target_endian, Some(Symbol::intern(end.as_str()))));
+    ret.insert((sym::target_pointer_type_width, Some(Symbol::intern(&wordtysz))));
     ret.insert((sym::target_pointer_width, Some(Symbol::intern(&wordsz))));
     ret.insert((sym::target_env, Some(Symbol::intern(env))));
     ret.insert((sym::target_abi, Some(Symbol::intern(abi))));
@@ -1033,6 +1036,7 @@ impl CrateCheckConfig {
             sym::target_family,
             sym::target_arch,
             sym::target_endian,
+            sym::target_pointer_type_width,
             sym::target_pointer_width,
             sym::target_env,
             sym::target_abi,
@@ -1119,7 +1123,7 @@ impl CrateCheckConfig {
 
         // Target specific values
         {
-            const VALUES: [&Symbol; 8] = [
+            const VALUES: [&Symbol; 9] = [
                 &sym::target_os,
                 &sym::target_family,
                 &sym::target_arch,
@@ -1127,6 +1131,7 @@ impl CrateCheckConfig {
                 &sym::target_env,
                 &sym::target_abi,
                 &sym::target_vendor,
+                &sym::target_pointer_type_width,
                 &sym::target_pointer_width,
             ];
 
@@ -1145,6 +1150,7 @@ impl CrateCheckConfig {
                 values_target_env,
                 values_target_abi,
                 values_target_vendor,
+                values_target_pointer_type_width,
                 values_target_pointer_width,
             ] = self
                 .values_valid
@@ -1163,6 +1169,9 @@ impl CrateCheckConfig {
                 values_target_env.insert(Symbol::intern(&target.options.env));
                 values_target_abi.insert(Symbol::intern(&target.options.abi));
                 values_target_vendor.insert(Symbol::intern(&target.options.vendor));
+                values_target_pointer_type_width.insert(sym::integer(
+                    target.options.pointer_type_width.unwrap_or(target.pointer_width),
+                ));
                 values_target_pointer_width.insert(sym::integer(target.pointer_width));
             }
         }

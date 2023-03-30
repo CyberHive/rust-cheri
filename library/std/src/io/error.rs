@@ -1,14 +1,30 @@
 #[cfg(test)]
 mod tests;
 
+#[cfg(bootstrap)]
 #[cfg(target_pointer_width = "64")]
 mod repr_bitpacked;
+#[cfg(not(bootstrap))]
+#[cfg(target_pointer_type_width = "64")]
+mod repr_bitpacked;
+#[cfg(bootstrap)]
 #[cfg(target_pointer_width = "64")]
 use repr_bitpacked::Repr;
+#[cfg(not(bootstrap))]
+#[cfg(target_pointer_type_width = "64")]
+use repr_bitpacked::Repr;
 
+#[cfg(bootstrap)]
 #[cfg(not(target_pointer_width = "64"))]
 mod repr_unpacked;
+#[cfg(not(bootstrap))]
+#[cfg(not(target_pointer_type_width = "64"))]
+mod repr_unpacked;
+#[cfg(bootstrap)]
 #[cfg(not(target_pointer_width = "64"))]
+use repr_unpacked::Repr;
+#[cfg(not(bootstrap))]
+#[cfg(not(target_pointer_type_width = "64"))]
 use repr_unpacked::Repr;
 
 use crate::convert::From;
