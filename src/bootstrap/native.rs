@@ -998,6 +998,10 @@ impl Step for TestHelpers {
         // without issues. Use this hack to compile the test helpers.
         let target = if self.target == "x86_64-fortanix-unknown-sgx" {
             TargetSelection::from_user("x86_64-unknown-linux-gnu")
+        } else if self.target == "riscv32imcxcheri-unknown-none-purecap" {
+            TargetSelection::from_user("riscv32-unknown-elf")
+        } else if self.target == "morello-unknown-none-purecap" {
+            TargetSelection::from_user("aarch64-none-elf")
         } else {
             self.target
         };
