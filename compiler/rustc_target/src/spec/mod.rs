@@ -1074,6 +1074,7 @@ supported_targets! {
     ("x86_64-unknown-none-linuxkernel", x86_64_unknown_none_linuxkernel),
 
     ("aarch64-unknown-freebsd", aarch64_unknown_freebsd),
+    ("morello-unknown-freebsd-purecap", morello_unknown_freebsd_purecap),
     ("armv6-unknown-freebsd", armv6_unknown_freebsd),
     ("armv7-unknown-freebsd", armv7_unknown_freebsd),
     ("i686-unknown-freebsd", i686_unknown_freebsd),

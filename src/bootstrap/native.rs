@@ -1002,6 +1002,8 @@ impl Step for TestHelpers {
             TargetSelection::from_user("riscv32-unknown-elf")
         } else if self.target == "morello-unknown-none-purecap" {
             TargetSelection::from_user("aarch64-none-elf")
+        } else if self.target == "morello-unknown-freebsd-purecap" {
+            TargetSelection::from_user("aarch64-none-freebsd")
         } else {
             self.target
         };
