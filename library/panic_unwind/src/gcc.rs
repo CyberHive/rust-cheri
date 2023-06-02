@@ -39,6 +39,7 @@
 use alloc::boxed::Box;
 use core::any::Any;
 use core::ptr;
+use libc::uintptr_t;
 
 use unwind as uw;
 
@@ -63,7 +64,7 @@ pub unsafe fn panic(data: Box<dyn Any + Send>) -> u32 {
         _uwe: uw::_Unwind_Exception {
             exception_class: rust_exception_class(),
             exception_cleanup,
-            private: [0; uw::unwinder_private_data_size],
+            private: [0 as uintptr_t; uw::unwinder_private_data_size],
         },
         canary: &CANARY,
         cause: data,

@@ -213,7 +213,7 @@ cfg_if::cfg_if! {
                             UNWIND_DATA_REG.0,
                             exception_object as uintptr_t,
                         );
-                        uw::_Unwind_SetGR(context, UNWIND_DATA_REG.1, 0);
+                        uw::_Unwind_SetGR(context, UNWIND_DATA_REG.1, 0 as uintptr_t);
                         uw::_Unwind_SetIP(context, lpad);
                         uw::_URC_INSTALL_CONTEXT
                     }

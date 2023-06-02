@@ -13,6 +13,7 @@
 
 use super::DwarfReader;
 use core::mem;
+use libc::uintptr_t;
 
 pub const DW_EH_PE_omit: u8 = 0xFF;
 pub const DW_EH_PE_absptr: u8 = 0x00;
@@ -36,16 +37,16 @@ pub const DW_EH_PE_indirect: u8 = 0x80;
 
 #[derive(Copy, Clone)]
 pub struct EHContext<'a> {
-    pub ip: usize,                             // Current instruction pointer
-    pub func_start: usize,                     // Address of the current function
-    pub get_text_start: &'a dyn Fn() -> usize, // Get address of the code section
-    pub get_data_start: &'a dyn Fn() -> usize, // Get address of the data section
+    pub ip: uintptr_t,                             // Current instruction pointer
+    pub func_start: uintptr_t,                     // Address of the current function
+    pub get_text_start: &'a dyn Fn() -> uintptr_t, // Get address of the code section
+    pub get_data_start: &'a dyn Fn() -> uintptr_t, // Get address of the data section
 }
 
 pub enum EHAction {
     None,
-    Cleanup(usize),
-    Catch(usize),
+    Cleanup(uintptr_t),
+    Catch(uintptr_t),
     Terminate,
 }
 
@@ -86,14 +87,18 @@ pub unsafe fn find_eh_action(lsda: *const u8, context: &EHContext<'_>) -> Result
             let cs_action = reader.read_uleb128();
             // Callsite table is sorted by cs_start, so if we've passed the ip, we
             // may stop searching.
-            if ip < func_start + cs_start {
+            if (ip as *const u8).addr() < (func_start as *const u8).addr() +
+                                          (cs_start as *const u8).addr() {
                 break;
             }
-            if ip < func_start + cs_start + cs_len {
-                if cs_lpad == 0 {
+            if (ip as *const u8).addr() < (func_start as *const u8).addr() +
+                                          (cs_start as *const u8).addr() +
+                                          (cs_len as *const u8).addr() {
+                if cs_lpad == (0 as uintptr_t) {
                     return Ok(EHAction::None);
                 } else {
-                    let lpad = lpad_base + cs_lpad;
+                    let lpad = (lpad_base as *const u8).with_addr((lpad_base as *const u8).addr() +
+                                                                  (cs_lpad as *const u8).addr()) as uintptr_t;
                     return Ok(interpret_cs_action(cs_action, lpad));
                 }
             }
@@ -109,7 +114,7 @@ pub unsafe fn find_eh_action(lsda: *const u8, context: &EHContext<'_>) -> Result
             0 => return Ok(EHAction::Terminate),
             _ => (),
         }
-        let mut idx = ip;
+        let mut idx = ip as isize;
         loop {
             let cs_lpad = reader.read_uleb128();
             let cs_action = reader.read_uleb128();
@@ -117,14 +122,14 @@ pub unsafe fn find_eh_action(lsda: *const u8, context: &EHContext<'_>) -> Result
             if idx == 0 {
                 // Can never have null landing pad for sjlj -- that would have
                 // been indicated by a -1 call site index.
-                let lpad = (cs_lpad + 1) as usize;
+                let lpad = (cs_lpad + 1) as uintptr_t;
                 return Ok(interpret_cs_action(cs_action, lpad));
             }
         }
     }
 }
 
-fn interpret_cs_action(cs_action: u64, lpad: usize) -> EHAction {
+fn interpret_cs_action(cs_action: u64, lpad: uintptr_t) -> EHAction {
     if cs_action == 0 {
         // If cs_action is 0 then this is a cleanup (Drop::drop). We run these
         // for both Rust panics and foreign exceptions.
@@ -136,44 +141,48 @@ fn interpret_cs_action(cs_action: u64, lpad: usize) -> EHAction {
 }
 
 #[inline]
-fn round_up(unrounded: usize, align: usize) -> Result<usize, ()> {
-    if align.is_power_of_two() { Ok((unrounded + align - 1) & !(align - 1)) } else { Err(()) }
+fn round_up(unrounded: *const u8, align: usize) -> Result<*const u8, ()> {
+    if align.is_power_of_two() {
+        Ok(unrounded.with_addr((unrounded.addr() + align - 1) & !(align - 1)))
+    } else {
+        Err(())
+    }
 }
 
 unsafe fn read_encoded_pointer(
     reader: &mut DwarfReader,
     context: &EHContext<'_>,
     encoding: u8,
-) -> Result<usize, ()> {
+) -> Result<uintptr_t, ()> {
     if encoding == DW_EH_PE_omit {
         return Err(());
     }
 
     // DW_EH_PE_aligned implies it's an absolute pointer value
     if encoding == DW_EH_PE_aligned {
-        reader.ptr = round_up(reader.ptr as usize, mem::size_of::<usize>())? as *const u8;
-        return Ok(reader.read::<usize>());
+        reader.ptr = round_up(reader.ptr, mem::size_of::<uintptr_t>())?;
+        return Ok(reader.read::<uintptr_t>());
     }
 
     let mut result = match encoding & 0x0F {
-        DW_EH_PE_absptr => reader.read::<usize>(),
-        DW_EH_PE_uleb128 => reader.read_uleb128() as usize,
-        DW_EH_PE_udata2 => reader.read::<u16>() as usize,
-        DW_EH_PE_udata4 => reader.read::<u32>() as usize,
-        DW_EH_PE_udata8 => reader.read::<u64>() as usize,
-        DW_EH_PE_sleb128 => reader.read_sleb128() as usize,
-        DW_EH_PE_sdata2 => reader.read::<i16>() as usize,
-        DW_EH_PE_sdata4 => reader.read::<i32>() as usize,
-        DW_EH_PE_sdata8 => reader.read::<i64>() as usize,
+        DW_EH_PE_absptr => reader.read::<uintptr_t>(),
+        DW_EH_PE_uleb128 => reader.read_uleb128() as uintptr_t,
+        DW_EH_PE_udata2 => reader.read::<u16>() as uintptr_t,
+        DW_EH_PE_udata4 => reader.read::<u32>() as uintptr_t,
+        DW_EH_PE_udata8 => reader.read::<u64>() as uintptr_t,
+        DW_EH_PE_sleb128 => reader.read_sleb128() as uintptr_t,
+        DW_EH_PE_sdata2 => reader.read::<i16>() as uintptr_t,
+        DW_EH_PE_sdata4 => reader.read::<i32>() as uintptr_t,
+        DW_EH_PE_sdata8 => reader.read::<i64>() as uintptr_t,
         _ => return Err(()),
     };
 
-    result += match encoding & 0x70 {
-        DW_EH_PE_absptr => 0,
+    result = (result as *const u8).add((match encoding & 0x70 {
+        DW_EH_PE_absptr => 0 as uintptr_t,
         // relative to address of the encoded value, despite the name
-        DW_EH_PE_pcrel => reader.ptr as usize,
+        DW_EH_PE_pcrel => reader.ptr as uintptr_t,
         DW_EH_PE_funcrel => {
-            if context.func_start == 0 {
+            if context.func_start == (0 as uintptr_t) {
                 return Err(());
             }
             context.func_start
@@ -181,10 +190,10 @@ unsafe fn read_encoded_pointer(
         DW_EH_PE_textrel => (*context.get_text_start)(),
         DW_EH_PE_datarel => (*context.get_data_start)(),
         _ => return Err(()),
-    };
+    } as *const u8).addr()) as uintptr_t;
 
     if encoding & DW_EH_PE_indirect != 0 {
-        result = *(result as *const usize);
+        result = *(result as *const uintptr_t);
     }
 
     Ok(result)
