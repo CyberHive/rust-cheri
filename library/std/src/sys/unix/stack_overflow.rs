@@ -46,9 +46,16 @@ mod imp {
 
     use libc::MAP_FAILED;
     use libc::{mmap, munmap};
-    use libc::{sigaction, sighandler_t, SA_ONSTACK, SA_SIGINFO, SIGBUS, SIG_DFL};
+    use libc::{sigaction, SA_ONSTACK, SA_SIGINFO, SIGBUS, SIG_DFL};
+    #[cfg(bootstrap)]
+    use libc::sighandler_t;
+    #[cfg(not(bootstrap))]
+    #[cfg(not(target_arch = "morello+c64"))]
+    use libc::sighandler_t;
     use libc::{sigaltstack, SIGSTKSZ, SS_DISABLE};
     use libc::{MAP_ANON, MAP_PRIVATE, PROT_NONE, PROT_READ, PROT_WRITE, SIGSEGV};
+
+    use cfg_if::cfg_if;
 
     use crate::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
     use crate::sys::unix::os::page_size;
@@ -94,7 +101,19 @@ mod imp {
         } else {
             // Unregister ourselves by reverting back to the default behavior.
             let mut action: sigaction = mem::zeroed();
-            action.sa_sigaction = SIG_DFL;
+            cfg_if! {
+                if #[cfg(not(bootstrap))] {
+                    cfg_if! {
+                        if #[cfg(target_arch = "morello+c64")] {
+                            action.sa_u.sa_handler.sah_id = SIG_DFL;
+                        } else {
+                            action.sa_sigaction = SIG_DFL;
+                        }
+                    }
+                } else {
+                    action.sa_sigaction = SIG_DFL;
+                }
+            }
             sigaction(signum, &action, ptr::null_mut());
 
             // See comment above for why this function returns.
@@ -109,11 +128,33 @@ mod imp {
         for &signal in &[SIGSEGV, SIGBUS] {
             sigaction(signal, ptr::null_mut(), &mut action);
             // Configure our signal handler if one is not already set.
-            if action.sa_sigaction == SIG_DFL {
-                action.sa_flags = SA_SIGINFO | SA_ONSTACK;
-                action.sa_sigaction = signal_handler as sighandler_t;
-                sigaction(signal, &action, ptr::null_mut());
-                NEED_ALTSTACK.store(true, Ordering::Relaxed);
+            cfg_if! {
+                if #[cfg(not(bootstrap))] {
+                    cfg_if! {
+                        if #[cfg(target_arch = "morello+c64")] {
+                            if action.sa_u.sa_handler.sah_id == SIG_DFL {
+                                action.sa_flags = SA_SIGINFO | SA_ONSTACK;
+                                action.sa_u.sa_sigaction = signal_handler;
+                                sigaction(signal, &action, ptr::null_mut());
+                                NEED_ALTSTACK.store(true, Ordering::Relaxed);
+                            }
+                        } else {
+                            if action.sa_sigaction == SIG_DFL {
+                                action.sa_flags = SA_SIGINFO | SA_ONSTACK;
+                                action.sa_sigaction = signal_handler as sighandler_t;
+                                sigaction(signal, &action, ptr::null_mut());
+                                NEED_ALTSTACK.store(true, Ordering::Relaxed);
+                            }
+                        }
+                    }
+                } else {
+                    if action.sa_sigaction == SIG_DFL {
+                        action.sa_flags = SA_SIGINFO | SA_ONSTACK;
+                        action.sa_sigaction = signal_handler as sighandler_t;
+                        sigaction(signal, &action, ptr::null_mut());
+                        NEED_ALTSTACK.store(true, Ordering::Relaxed);
+                    }
+                }
             }
         }
 
