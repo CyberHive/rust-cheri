@@ -1,0 +1,20 @@
+profile = "codegen"
+changelog-seen = 2
+
+[target.morello-unknown-freebsd-purecap]
+cc = "aarch64-unknown-freebsd-clang"
+ar = "ar"
+
+[llvm]
+download-ci-llvm = false
+targets = "X86;AArch64"
+experimental-targets = ""
+clang = true
+build-config = { "LLVM_ENABLE_PROJECTS"="clang;lld" }
+
+[rust]
+optimize = false
+debug = true
+debuginfo-level = 2
+new-symbol-mangling = false
+use-lld = true
