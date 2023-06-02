@@ -144,10 +144,22 @@ mod c_char_definition {
                 )
             ),
             all(target_os = "fuchsia", target_arch = "aarch64"),
-            target_os = "horizon"
+            target_os = "horizon",
         ))] {
             pub type c_char = u8;
             pub type NonZero_c_char = crate::num::NonZeroU8;
+        } else if #[cfg(not(bootstrap))] {
+            // An annoying way to have to do this.
+            cfg_if! {
+                if #[cfg(target_arch = "morello+c64")] {
+                    pub type c_char = u8;
+                    pub type NonZero_c_char = crate::num::NonZeroU8;
+                } else {
+                    // On every other target, c_char is signed.
+                    pub type c_char = i8;
+                    pub type NonZero_c_char = crate::num::NonZeroI8;
+                }
+            }
         } else {
             // On every other target, c_char is signed.
             pub type c_char = i8;

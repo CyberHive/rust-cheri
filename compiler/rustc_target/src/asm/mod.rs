@@ -224,6 +224,7 @@ impl FromStr for InlineAsmArch {
             "x86_64" => Ok(Self::X86_64),
             "arm" => Ok(Self::Arm),
             "aarch64" => Ok(Self::AArch64),
+            "morello+c64" => Ok(Self::AArch64),
             "riscv32" => Ok(Self::RiscV32),
             "riscv64" => Ok(Self::RiscV64),
             "nvptx64" => Ok(Self::Nvptx64),
