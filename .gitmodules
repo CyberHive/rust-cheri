@@ -18,7 +18,8 @@
 	url = https://github.com/rust-lang/rust-by-example.git
 [submodule "library/stdarch"]
 	path = library/stdarch
-	url = https://github.com/rust-lang/stdarch.git
+    url = https://github.com/lewis-revill/stdarch.git
+    branch = ljr-cheri
 [submodule "src/doc/rustc-dev-guide"]
 	path = src/doc/rustc-dev-guide
 	url = https://github.com/rust-lang/rustc-dev-guide.git
@@ -34,4 +35,5 @@
 	url = https://github.com/rust-embedded/book.git
 [submodule "library/backtrace"]
 	path = library/backtrace
-	url = https://github.com/rust-lang/backtrace-rs.git
+    url = https://github.com/lewis-revill/backtrace-rs-cheri.git
+    branch = ljr-cheri
