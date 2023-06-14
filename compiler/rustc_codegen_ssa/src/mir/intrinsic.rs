@@ -429,15 +429,14 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                         };
                         let ty = substs.type_at(0);
                         if int_type_width_signed(ty, bx.tcx()).is_some() || ty.is_unsafe_ptr() {
+                            let layout = bx.layout_of(ty);
                             let weak = instruction == "cxchgweak";
                             let mut dst = args[0].immediate();
                             let mut cmp = args[1].immediate();
                             let mut src = args[2].immediate();
-                            if ty.is_unsafe_ptr() {
+                            if ty.is_unsafe_ptr() && layout.ty_size == layout.val_size {
                                 // Some platforms do not support atomic operations on pointers,
                                 // so we cast to integer first.
-                                // TODO: Fix this for CHERI.
-                                // TODO: Get the correct address space from dst.
                                 let ptr_llty = bx.type_ptr_to_ext(bx.type_isize(), dl.default_address_space);
                                 dst = bx.pointercast(dst, ptr_llty);
                                 cmp = bx.get_pointer_address(cmp);
@@ -465,12 +464,10 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                             let layout = bx.layout_of(ty);
                             let ty_size = layout.ty_size;
                             let mut source = args[0].immediate();
-                            if ty.is_unsafe_ptr() {
+                            if ty.is_unsafe_ptr() && layout.ty_size == layout.val_size {
                                 // Some platforms do not support atomic operations on pointers,
                                 // so we cast to integer first...
-                                // TODO: What is this logic? Fix it for CHERI.
                                 let llty = bx.type_isize();
-                                // TODO: Get correct address space from source.
                                 let ptr_llty = bx.type_ptr_to_ext(llty, dl.default_address_space);
                                 source = bx.pointercast(source, ptr_llty);
                                 let result = bx.atomic_load(llty, source, parse_ordering(bx, ordering), ty_size);
@@ -487,19 +484,18 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     "store" => {
                         let ty = substs.type_at(0);
                         if int_type_width_signed(ty, bx.tcx()).is_some() || ty.is_unsafe_ptr() {
-                            let ty_size = bx.layout_of(ty).ty_size;
+                            let layout = bx.layout_of(ty);
                             let mut val = args[1].immediate();
                             let mut ptr = args[0].immediate();
-                            if ty.is_unsafe_ptr() {
+                            // TODO: Fix for hybrid mode.
+                            if ty.is_unsafe_ptr() && layout.ty_size == layout.val_size {
                                 // Some platforms do not support atomic operations on pointers,
                                 // so we cast to integer first.
-                                // TODO: This needs fixing for CHERI.
-                                // TODO: Get the correct address space from ptr.
                                 let ptr_llty = bx.type_ptr_to_ext(bx.type_isize(), dl.default_address_space);
                                 ptr = bx.pointercast(ptr, ptr_llty);
                                 val = bx.get_pointer_address(val);
                             }
-                            bx.atomic_store(val, ptr, parse_ordering(bx, ordering), ty_size);
+                            bx.atomic_store(val, ptr, parse_ordering(bx, ordering), layout.ty_size);
                             return;
                         } else {
                             return invalid_monomorphization(ty);
