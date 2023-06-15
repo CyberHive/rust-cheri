@@ -864,7 +864,12 @@ pub mod guard {
                     // Use page size as a fallback.
                     guardsize = PAGE_SIZE.load(Ordering::Relaxed);
                 } else {
+                    #[cfg(bootstrap)]
                     panic!("there is no guard page");
+                    #[cfg(not(bootstrap))]
+                    if !cfg!(target_arch = "morello+c64") {
+                        panic!("there is no guard page");
+                    }
                 }
             }
             let mut stackptr = crate::ptr::null_mut::<libc::c_void>();
