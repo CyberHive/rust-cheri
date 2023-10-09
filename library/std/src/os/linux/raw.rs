@@ -243,7 +243,8 @@ mod arch {
     pub use libc::{blkcnt_t, blksize_t, ino_t, nlink_t, off_t, stat, time_t};
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg_attr(not(bootstrap), cfg(any(target_arch = "aarch64", target_arch = "morello+c64")))]
+#[cfg_attr(bootstrap, cfg(target_arch = "aarch64"))]
 mod arch {
     use crate::os::raw::{c_int, c_long};
 

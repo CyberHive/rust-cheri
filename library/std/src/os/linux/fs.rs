@@ -10,6 +10,13 @@ use crate::sys_common::AsInner;
 #[allow(deprecated)]
 use crate::os::linux::raw;
 
+#[cfg_attr(not(bootstrap), cfg(all(target_arch = "morello+c64", target_env = "musl")))]
+#[cfg(not(bootstrap))]
+use libc::stat as stat64;
+
+#[cfg_attr(not(bootstrap), cfg(not(all(target_arch = "morello+c64", target_env = "musl"))))]
+use libc::stat64;
+
 /// OS-specific extensions to [`fs::Metadata`].
 ///
 /// [`fs::Metadata`]: crate::fs::Metadata
@@ -329,7 +336,7 @@ pub trait MetadataExt {
 impl MetadataExt for Metadata {
     #[allow(deprecated)]
     fn as_raw_stat(&self) -> &raw::stat {
-        unsafe { &*(self.as_inner().as_inner() as *const libc::stat64 as *const raw::stat) }
+        unsafe { &*(self.as_inner().as_inner() as *const stat64 as *const raw::stat) }
     }
     fn st_dev(&self) -> u64 {
         self.as_inner().as_inner().st_dev as u64

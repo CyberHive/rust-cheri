@@ -47,6 +47,7 @@ use libc::{c_int, mode_t};
 use libc::c_char;
 #[cfg(any(target_os = "linux", target_os = "emscripten", target_os = "android"))]
 use libc::dirfd;
+#[cfg_attr(not(bootstrap), cfg(not(all(target_arch = "morello+c64", target_os = "linux", target_env = "musl"))))]
 #[cfg(any(target_os = "linux", target_os = "emscripten"))]
 use libc::fstatat64;
 #[cfg(any(
@@ -57,6 +58,7 @@ use libc::fstatat64;
     target_os = "illumos"
 ))]
 use libc::readdir as readdir64;
+#[cfg_attr(not(bootstrap), cfg(not(all(target_arch = "morello+c64", target_os = "linux", target_env = "musl"))))]
 #[cfg(target_os = "linux")]
 use libc::readdir64;
 #[cfg(any(target_os = "emscripten", target_os = "l4re"))]
@@ -87,6 +89,16 @@ use libc::{
     dirent as dirent64, fstat as fstat64, ftruncate as ftruncate64, lseek as lseek64,
     lstat as lstat64, off_t as off64_t, open as open64, stat as stat64,
 };
+
+#[cfg_attr(not(bootstrap), cfg(all(target_arch = "morello+c64", target_os = "linux", target_env = "musl")))]
+#[cfg(not(bootstrap))]
+use libc::{
+    dirent as dirent64, fstat as fstat64, fstatat as fstatat64, ftruncate as ftruncate64, lseek as lseek64,
+    lstat as lstat64, off_t as off64_t, open as open64, stat as stat64, readdir as readdir64
+};
+
+
+#[cfg_attr(not(bootstrap), cfg(not(all(target_arch = "morello+c64", target_os = "linux", target_env = "musl"))))]
 #[cfg(any(target_os = "linux", target_os = "emscripten", target_os = "l4re"))]
 use libc::{dirent64, fstat64, ftruncate64, lseek64, lstat64, off64_t, open64, stat64};
 
