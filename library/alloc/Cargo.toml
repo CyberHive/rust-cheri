@@ -10,7 +10,7 @@ edition = "2021"
 
 [dependencies]
 core = { path = "../core" }
-compiler_builtins = { version = "0.1.40", features = ['rustc-dep-of-std'] }
+compiler_builtins = { git = "https://github.com/lewis-revill/compiler-builtins-cheri.git", branch = "ljr-cheri-0.1.73", features = ['rustc-dep-of-std'] }
 
 [dev-dependencies]
 rand = "0.7"
