@@ -1748,6 +1748,16 @@ impl<'a> Builder<'a> {
             let sysroot = sysroot.into_os_string().into_string().unwrap();
             rustflags.arg(&format!("-Clink-args=--sysroot={}", sysroot));
         }
+        if target == "morello-unknown-linux-purecap" {
+            rustflags.arg("-Clink-args=-march=morello+c64");
+            rustflags.arg("-Clink-args=-mabi=purecap");
+            let sysroot = match home_dir() {
+                Some(path) => path.as_path().join("cheri").join("output").join("musl-bin"),
+                None => Path::new("").to_path_buf(),
+            };
+            let sysroot = sysroot.into_os_string().into_string().unwrap();
+            rustflags.arg(&format!("-Clink-args=--sysroot={}", sysroot));
+        }
         self.lld_flags(target).for_each(|flag| {
             rustdocflags.arg(&flag);
         });

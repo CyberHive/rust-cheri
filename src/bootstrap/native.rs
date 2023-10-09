@@ -1037,6 +1037,15 @@ impl Step for TestHelpers {
                 let sysroot = sysroot.into_os_string().into_string().unwrap();
                 cfg.flag(&format!("--sysroot={}", sysroot));
             }
+            if self.target == "morello-unknown-linux-purecap" {
+                let sysroot = match home_dir() {
+                    Some(path) => path.as_path().join("cheri").join("output").join("musl-bin"),
+                    None => Path::new("").to_path_buf(),
+                };
+                let sysroot = sysroot.into_os_string().into_string().unwrap();
+                cfg.flag(&format!("--sysroot={}", sysroot));
+            }
+
         }
         cfg.cargo_metadata(false)
             .out_dir(&dst)

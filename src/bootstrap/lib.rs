@@ -1087,6 +1087,14 @@ impl Build {
             let sysroot = sysroot.into_os_string().into_string().unwrap();
             base.push(format!("--sysroot={}", sysroot));
         }
+        if &*target.triple == "morello-unknown-linux-purecap" {
+            let sysroot = match home_dir() {
+                Some(path) => path.as_path().join("cheri").join("output").join("musl-bin"),
+                None => Path::new("").to_path_buf(),
+            };
+            let sysroot = sysroot.into_os_string().into_string().unwrap();
+            base.push(format!("--sysroot={}", sysroot));
+        }
 
         // Work around an apparently bad MinGW / GCC optimization,
         // See: https://lists.llvm.org/pipermail/cfe-dev/2016-December/051980.html
