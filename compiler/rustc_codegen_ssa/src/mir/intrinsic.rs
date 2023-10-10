@@ -564,7 +564,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
 
             sym::ptr_offset_from | sym::ptr_offset_from_unsigned => {
                 let ty = substs.type_at(0);
-                let pointee_size = bx.layout_of(ty).ty_size;
+                let pointee_size = bx.layout_of(ty).val_size;
 
                 let a = args[0].immediate();
                 let b = args[1].immediate();

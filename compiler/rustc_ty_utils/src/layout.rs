@@ -190,6 +190,7 @@ fn univariant_uninterned<'tcx>(
     let mut sized = true;
     let mut offsets = vec![Size::ZERO; fields.len()];
     let mut offset = Size::ZERO;
+    let mut total_val_size = Size::ZERO;
     let mut largest_niche = None;
     let mut largest_niche_available = 0;
 
@@ -239,6 +240,7 @@ fn univariant_uninterned<'tcx>(
         }
 
         offset = offset.checked_add(field.ty_size, dl).ok_or(LayoutError::SizeOverflow(ty))?;
+        total_val_size = total_val_size.checked_add(field.val_size, dl).ok_or(LayoutError::SizeOverflow(ty))?;
     }
 
     if let Some(repr_align) = repr.align {
@@ -260,8 +262,6 @@ fn univariant_uninterned<'tcx>(
 
     let size = min_size.align_to(align.abi);
     let mut abi = Abi::Aggregate { sized };
-    // TODO: Can we do better than this?
-    let val_size = size;
 
     // Unpack newtype ABIs and find scalar pairs.
     if sized && size.bytes() > 0 {
@@ -336,7 +336,7 @@ fn univariant_uninterned<'tcx>(
         largest_niche,
         align,
         ty_size: size,
-        val_size,
+        val_size: total_val_size,
     })
 }
 
@@ -452,8 +452,7 @@ fn layout_of_uncached<'tcx>(
             let count = count.try_eval_usize(tcx, param_env).ok_or(LayoutError::Unknown(ty))?;
             let element = cx.layout_of(element)?;
             let ty_size = element.ty_size.checked_mul(count, dl).ok_or(LayoutError::SizeOverflow(ty))?;
-            // TODO: Can we do better than this?
-            let val_size = ty_size;
+            let val_size = element.val_size.checked_mul(count, dl).ok_or(LayoutError::SizeOverflow(ty))?;
 
             let abi = if count != 0 && tcx.conservative_is_privately_uninhabited(param_env.and(ty))
             {
@@ -631,8 +630,7 @@ fn layout_of_uncached<'tcx>(
             let ty_size = e_ly.ty_size.checked_mul(e_len, dl).ok_or(LayoutError::SizeOverflow(ty))?;
             let align = dl.vector_align(ty_size);
             let ty_size = ty_size.align_to(align.abi);
-            // TODO: Can we do better than this?
-            let val_size = ty_size;
+            let val_size = e_ly.val_size.checked_mul(e_len, dl).ok_or(LayoutError::SizeOverflow(ty))?;
 
             // Compute the placement of the vector fields:
             let fields = if is_array {
@@ -683,7 +681,8 @@ fn layout_of_uncached<'tcx>(
                 }
 
                 let optimize = !def.repr().inhibit_union_abi_opt();
-                let mut size = Size::ZERO;
+                let mut ty_size = Size::ZERO;
+                let mut val_size = Size::ZERO;
                 let mut abi = Abi::Aggregate { sized: true };
                 let index = VariantIdx::new(0);
                 for field in &variants[index] {
@@ -704,7 +703,7 @@ fn layout_of_uncached<'tcx>(
                             }
                         };
 
-                        if size == Size::ZERO {
+                        if ty_size == Size::ZERO {
                             // first non ZST: initialize 'abi'
                             abi = field_abi;
                         } else if abi != field_abi {
@@ -713,7 +712,8 @@ fn layout_of_uncached<'tcx>(
                         }
                     }
 
-                    size = cmp::max(size, field.ty_size);
+                    ty_size = cmp::max(ty_size, field.ty_size);
+                    val_size = cmp::max(val_size, field.val_size);
                 }
 
                 if let Some(pack) = def.repr().pack {
@@ -728,9 +728,8 @@ fn layout_of_uncached<'tcx>(
                     abi,
                     largest_niche: None,
                     align,
-                    ty_size: size.align_to(align.abi),
-                    // TODO: Can we do better than this?
-                    val_size: size.align_to(align.abi),
+                    ty_size: ty_size.align_to(align.abi),
+                    val_size,
                 }));
             }
 
@@ -946,7 +945,7 @@ fn layout_of_uncached<'tcx>(
                     let niche_size = niche.value.ty_size(dl);
                     let size = variant_layouts[largest_variant_index].ty_size.align_to(align.abi);
                     // TODO: Check if we can do anything better than this.
-                    let val_size = size;
+                    let val_size = variant_layouts[largest_variant_index].val_size;
 
                     let all_variants_fit =
                         variant_layouts.iter_enumerated_mut().all(|(i, layout)| {
@@ -1082,6 +1081,7 @@ fn layout_of_uncached<'tcx>(
 
             let mut align = dl.aggregate_align;
             let mut ty_size = Size::ZERO;
+            let mut val_size = Size::ZERO;
 
             // We're interested in the smallest alignment, so start large.
             let mut start_align = Align::from_bytes(256).unwrap();
@@ -1122,15 +1122,18 @@ fn layout_of_uncached<'tcx>(
                         }
                     }
                     ty_size = cmp::max(ty_size, st.ty_size);
+                    val_size = cmp::max(val_size, st.val_size);
                     align = align.max(st.align);
                     Ok(st)
                 })
                 .collect::<Result<IndexVec<VariantIdx, _>, _>>()?;
 
+            if val_size == Size::ZERO {
+                val_size = ty_size;
+            }
+
             // Align the maximum variant size to the largest alignment.
             ty_size = ty_size.align_to(align.abi);
-            // TODO: Can we do better here?
-            let val_size = ty_size;
 
             // TODO: More complexity needed here.
             if ty_size.bytes() >= dl.obj_size_bound(None) {
@@ -1594,6 +1597,7 @@ fn generator_layout<'tcx>(
     };
 
     let mut ty_size = prefix.ty_size;
+    let mut val_size = prefix.val_size;
     let mut align = prefix.align;
     let variants = info
         .variant_fields
@@ -1667,14 +1671,13 @@ fn generator_layout<'tcx>(
             };
 
             ty_size = ty_size.max(variant.ty_size);
+            val_size = val_size.max(variant.val_size);
             align = align.max(variant.align);
             Ok(tcx.intern_layout(variant))
         })
         .collect::<Result<IndexVec<VariantIdx, _>, _>>()?;
 
     ty_size = ty_size.align_to(align.abi);
-    // TODO: Can we do better than this?
-    let val_size = ty_size;
 
     let abi = if prefix.abi.is_uninhabited() || variants.iter().all(|v| v.abi().is_uninhabited()) {
         Abi::Uninhabited
