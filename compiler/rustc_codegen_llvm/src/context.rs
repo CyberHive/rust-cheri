@@ -638,6 +638,7 @@ impl<'ll> CodegenCx<'ll, '_> {
         // Different types for all different address spaces.
         let i8p_types =
             &(dl.pointer_layouts.iter().map(|e| (e.0, self.type_i8p_ext(e.0))).collect::<Vec<_>>());
+        let i8p_default = self.type_i8p_ext(dl.default_address_space);
         let i8p_i = self.type_i8p_ext(dl.instruction_address_space);
         let i8p_a = self.type_i8p_ext(dl.alloca_address_space);
 
@@ -903,26 +904,15 @@ impl<'ll> CodegenCx<'ll, '_> {
 
         // This isn't an "LLVM intrinsic", but LLVM's optimization passes
         // recognize it like one and we assume it exists in `core::slice::cmp`
-        for t in i8p_types {
-            for t2 in i8p_types {
-                if t.0 == AddressSpace(0) && t2.0 == AddressSpace(0) {
-                    match self.sess().target.arch.as_ref() {
-                        "avr" | "msp430" => {
-                            ifn!("memcmp".to_string(), fn(t.1, t2.1, t_isize) -> t_i16)
-                        }
-                        _ => {
-                            ifn!("memcmp".to_string(), fn(t.1, t2.1, t_isize) -> t_i32)
-                        }
-                    }
-                }
-                match self.sess().target.arch.as_ref() {
-                    "avr" | "msp430" => {
-                        ifn!(format!("memcmp.p{:?}i8.p{:?}i8", t.0.0, t2.0.0), fn(t.1, t2.1, t_isize) -> t_i16)
-                    }
-                    _ => {
-                        ifn!(format!("memcmp.p{:?}i8.p{:?}i8", t.0.0, t2.0.0), fn(t.1, t2.1, t_isize) -> t_i32)
-                    }
-                }
+        // TODO: Is there anything we can do about the fact we do not encode any address space
+        // information in the intrinsic name? At the moment all we can do with this is assume the
+        // default address space is being used for both i8* types.
+        match self.sess().target.arch.as_ref() {
+            "avr" | "msp430" => {
+                ifn!("memcmp".to_string(), fn(i8p_default, i8p_default, t_isize) -> t_i16)
+            }
+            _ => {
+                 ifn!("memcmp".to_string(), fn(i8p_default, i8p_default, t_isize) -> t_i32)
             }
         }
 
