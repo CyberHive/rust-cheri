@@ -472,7 +472,7 @@ impl<'tcx, Prov: Provenance> Scalar<Prov> {
     /// Converts the scalar to produce a machine-pointer-sized signed integer.
     /// Fails if the scalar is a pointer.
     pub fn to_machine_isize(self, cx: &impl HasDataLayout) -> InterpResult<'tcx, i64> {
-        let b = self.to_int(cx.pointer_ty_size())?;
+        let b = self.to_int(cx.pointer_val_size())?;
         Ok(i64::try_from(b).unwrap())
     }
 
