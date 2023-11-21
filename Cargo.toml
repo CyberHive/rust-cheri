@@ -104,6 +104,8 @@ object.debug = 0
 # here
 rustc-workspace-hack = { path = 'src/tools/rustc-workspace-hack' }
 
+compiler_builtins = { git = "https://github.com/lewis-revill/compiler-builtins-cheri.git", branch = "ljr-cheri-0.1.73" }
+
 # See comments in `library/rustc-std-workspace-core/README.md` for what's going on
 # here
 rustc-std-workspace-core = { path = 'library/rustc-std-workspace-core' }
