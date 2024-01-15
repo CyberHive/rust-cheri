@@ -1039,7 +1039,7 @@ impl Step for TestHelpers {
             }
             if self.target == "morello-unknown-linux-purecap" {
                 let sysroot = match home_dir() {
-                    Some(path) => path.as_path().join("cheri").join("output").join("musl-bin"),
+                    Some(path) => path.as_path().join("morello").join("musl"),
                     None => Path::new("").to_path_buf(),
                 };
                 let sysroot = sysroot.into_os_string().into_string().unwrap();
