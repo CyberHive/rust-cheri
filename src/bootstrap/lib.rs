@@ -1088,8 +1088,9 @@ impl Build {
             base.push(format!("--sysroot={}", sysroot));
         }
         if &*target.triple == "morello-unknown-linux-purecap" {
+            base.push("--target=aarch64-unknown-linux-musl_purecap".into());
             let sysroot = match home_dir() {
-                Some(path) => path.as_path().join("cheri").join("output").join("musl-bin"),
+                Some(path) => path.as_path().join("morello").join("musl"),
                 None => Path::new("").to_path_buf(),
             };
             let sysroot = sysroot.into_os_string().into_string().unwrap();
