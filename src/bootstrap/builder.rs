@@ -1757,6 +1757,7 @@ impl<'a> Builder<'a> {
             };
             let sysroot = sysroot.into_os_string().into_string().unwrap();
             rustflags.arg(&format!("-Clink-args=--sysroot={}", sysroot));
+            rustflags.arg(&format!("-Clink-self-contained=no"));
         }
         self.lld_flags(target).for_each(|flag| {
             rustdocflags.arg(&flag);
