@@ -33,3 +33,6 @@ panic_immediate_abort = []
 # Make `RefCell` store additional debugging information, which is printed out when
 # a borrow error occurs
 debug_refcell = []
+
+[patch.crates-io]
+libc = { git = "https://github.com/lewis-revill/libc-cheri.git", branch = "0.2.158-rustc-patches" }

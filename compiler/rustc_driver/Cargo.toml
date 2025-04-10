@@ -33,7 +33,7 @@ rustc_span = { path = "../rustc_span" }
 rustc_hir_analysis = { path = "../rustc_hir_analysis" }
 
 [target.'cfg(unix)'.dependencies]
-libc = "0.2"
+libc = { git = "https://github.com/lewis-revill/libc-cheri.git", branch = "0.2.135-rustc-patches" }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["consoleapi", "debugapi", "processenv"] }

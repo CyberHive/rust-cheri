@@ -11,7 +11,7 @@ bitflags = "1.2.1"
 cc = "1.0.69"
 itertools = "0.10.1"
 tracing = "0.1"
-libc = "0.2.50"
+libc = { git = "https://github.com/lewis-revill/libc-cheri.git", branch = "0.2.135-rustc-patches" }
 jobserver = "0.1.22"
 tempfile = "3.2"
 thorin-dwp = "0.3"

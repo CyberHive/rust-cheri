@@ -8,7 +8,7 @@ static-libstdcpp = []
 emscripten = []
 
 [dependencies]
-libc = "0.2.73"
+libc = { git = "https://github.com/lewis-revill/libc-cheri.git", branch = "0.2.135-rustc-patches" }
 
 [build-dependencies]
 cc = "1.0.69"

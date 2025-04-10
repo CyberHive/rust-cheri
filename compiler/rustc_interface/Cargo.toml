@@ -49,7 +49,7 @@ rustc_trait_selection = { path = "../rustc_trait_selection" }
 rustc_ty_utils = { path = "../rustc_ty_utils" }
 
 [target.'cfg(unix)'.dependencies]
-libc = "0.2"
+libc = { git = "https://github.com/lewis-revill/libc-cheri.git", branch = "0.2.135-rustc-patches" }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["libloaderapi"] }

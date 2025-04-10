@@ -15,7 +15,7 @@ doc = false
 
 [dependencies]
 core = { path = "../core" }
-libc = { git = "https://github.com/lewis-revill/libc-cheri.git", branch = "ljr-cheri-0.2.135", features = ['rustc-dep-of-std'], default-features = false }
+libc = { git = "https://github.com/lewis-revill/libc-cheri.git", branch = "0.2.135-rustc-patches", features = ['rustc-dep-of-std'], default-features = false }
 compiler_builtins = { git = "https://github.com/lewis-revill/compiler-builtins-cheri.git", branch = "ljr-cheri-0.1.73" }
 cfg-if = "0.1.8"
 

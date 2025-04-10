@@ -9,7 +9,7 @@ test = false
 [dependencies]
 bitflags = "1.0"
 cstr = "0.2"
-libc = "0.2"
+libc = { git = "https://github.com/lewis-revill/libc-cheri.git", branch = "0.2.135-rustc-patches" }
 measureme = "10.0.0"
 object = { git = "https://github.com/lewis-revill/object-cheri.git", branch = "ljr-cheri-0.29.0", default-features = false, features = ["std", "read_core", "archive", "coff", "elf", "macho", "pe"] }
 tracing = "0.1"

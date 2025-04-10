@@ -35,3 +35,6 @@ compiler-builtins-mem = ['compiler_builtins/mem']
 compiler-builtins-c = ["compiler_builtins/c"]
 compiler-builtins-no-asm = ["compiler_builtins/no-asm"]
 compiler-builtins-mangled-names = ["compiler_builtins/mangled-names"]
+
+[patch.crates-io]
+libc = { git = "https://github.com/lewis-revill/libc-cheri.git", branch = "0.2.158-rustc-patches" }

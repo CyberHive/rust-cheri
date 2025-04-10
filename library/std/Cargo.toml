@@ -15,7 +15,7 @@ cfg-if = { version = "1.0", features = ['rustc-dep-of-std'] }
 panic_unwind = { path = "../panic_unwind", optional = true }
 panic_abort = { path = "../panic_abort" }
 core = { path = "../core" }
-libc = { git = "https://github.com/lewis-revill/libc-cheri.git", branch = "ljr-cheri-0.2.135", default-features = false, features = ['rustc-dep-of-std'] }
+libc = { git = "https://github.com/lewis-revill/libc-cheri.git", branch = "0.2.135-rustc-patches", default-features = false, features = ['rustc-dep-of-std'] }
 compiler_builtins = { git = "https://github.com/lewis-revill/compiler-builtins-cheri.git", branch = "ljr-cheri-0.1.73" }
 profiler_builtins = { path = "../profiler_builtins", optional = true }
 unwind = { path = "../unwind" }
@@ -84,3 +84,6 @@ heap_size = 0x8000000
 name = "stdbenches"
 path = "benches/lib.rs"
 test = true
+
+[patch.crates-io]
+libc = { git = "https://github.com/lewis-revill/libc-cheri.git", branch = "0.2.158-rustc-patches" }
