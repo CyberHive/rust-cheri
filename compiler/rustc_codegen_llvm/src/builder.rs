@@ -1155,11 +1155,11 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
     }
 
     fn lifetime_start(&mut self, ptr: &'ll Value, size: Size) {
-        self.call_lifetime_intrinsic("llvm.lifetime.start.p0i8", ptr, size);
+        self.call_lifetime_intrinsic("llvm.lifetime.start.p200i8", ptr, size);
     }
 
     fn lifetime_end(&mut self, ptr: &'ll Value, size: Size) {
-        self.call_lifetime_intrinsic("llvm.lifetime.end.p0i8", ptr, size);
+        self.call_lifetime_intrinsic("llvm.lifetime.end.p200i8", ptr, size);
     }
 
     fn instrprof_increment(
